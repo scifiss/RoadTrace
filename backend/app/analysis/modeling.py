@@ -678,7 +678,12 @@ def commit_evidence(commits: list[CommitRecord]) -> list[ObservedEvidence]:
             observed_at=commit.timestamp,
             detail=(
                 f"{commit.change_type.value.replace('_', ' ').title()} touching "
-                f"{len(commit.changed_paths)} path(s), +{commit.additions}/-{commit.deletions}"
+                f"{len(commit.changed_paths)} path(s)"
+                + (
+                    f", +{commit.additions}/-{commit.deletions}"
+                    if commit.additions or commit.deletions
+                    else ""
+                )
             ),
         )
         for commit in commits
@@ -697,9 +702,12 @@ def build_timeline(
         if not related:
             continue
         chosen = [related[0]]
-        substantial = sorted(
-            related[1:], key=lambda item: item.additions + item.deletions, reverse=True
-        )[:2]
+        candidates = related[1:]
+        substantial = (
+            sorted(candidates, key=lambda item: item.additions + item.deletions, reverse=True)[:2]
+            if any(item.additions or item.deletions for item in candidates)
+            else candidates[-2:]
+        )
         for index, commit in enumerate(_unique_commits([*chosen, *substantial])):
             first = index == 0
             events.append(
@@ -780,35 +788,96 @@ def _capability_graph(capabilities: list[Capability]) -> GraphProjection:
 def _code_graph(
     entities: list[CodeEntity], relationships: list[CodeRelationship], max_nodes: int
 ) -> GraphProjection:
-    priority = {
-        EntityType.API_ENDPOINT: 0,
-        EntityType.UI_COMPONENT: 1,
-        EntityType.SCHEMA: 2,
-        EntityType.CLASS: 3,
-        EntityType.FUNCTION: 4,
-        EntityType.MODULE: 5,
-        EntityType.TEST: 6,
-        EntityType.EXTERNAL_MODULE: 7,
-        EntityType.METHOD: 8,
-        EntityType.CONFIGURATION: 9,
-        EntityType.FILE: 10,
-    }
-    selected = sorted(
-        entities,
-        key=lambda item: (
-            0 if item.metadata.get("entrypoint") else 1,
-            priority[item.type],
-            item.file_path,
-            item.line_start,
-        ),
-    )[:max_nodes]
+    selected = _balanced_code_entities(entities, relationships, max_nodes)
     return _project_entities(
         "Code graph",
-        "Bounded structural and dependency view of important files, symbols, and imports.",
+        "Balanced structural view of modules, interfaces, data types, "
+        "executable symbols, and imports.",
         selected,
         relationships,
         truncated=len(entities) > len(selected),
     )
+
+
+def _balanced_code_entities(
+    entities: list[CodeEntity], relationships: list[CodeRelationship], max_nodes: int
+) -> list[CodeEntity]:
+    """Keep a bounded graph representative instead of letting one symbol type dominate."""
+    type_order = [
+        EntityType.API_ENDPOINT,
+        EntityType.UI_COMPONENT,
+        EntityType.SCHEMA,
+        EntityType.CLASS,
+        EntityType.MODULE,
+        EntityType.CONFIGURATION,
+        EntityType.FUNCTION,
+        EntityType.TEST,
+        EntityType.METHOD,
+        EntityType.EXTERNAL_MODULE,
+        EntityType.FILE,
+    ]
+    degree = Counter[str]()
+    for relationship in relationships:
+        degree[relationship.source_id] += 1
+        degree[relationship.target_id] += 1
+
+    buckets = {entity_type: [] for entity_type in type_order}
+    for entity in entities:
+        buckets.setdefault(entity.type, []).append(entity)
+    for bucket in buckets.values():
+        bucket.sort(
+            key=lambda item: (
+                0 if item.metadata.get("entrypoint") else 1,
+                -degree[item.id],
+                item.file_path,
+                item.line_start,
+            )
+        )
+
+    selected: list[CodeEntity] = []
+    selected_ids: set[str] = set()
+    name_counts: Counter[tuple[EntityType, str]] = Counter()
+    file_counts: Counter[str] = Counter()
+    cursors = {entity_type: 0 for entity_type in buckets}
+    duplicate_limit = max(2, max_nodes // 30)
+    per_file_limit = max(4, max_nodes // 18)
+
+    while len(selected) < max_nodes:
+        progressed = False
+        for entity_type in type_order:
+            bucket = buckets[entity_type]
+            while cursors[entity_type] < len(bucket):
+                item = bucket[cursors[entity_type]]
+                cursors[entity_type] += 1
+                name_key = (item.type, item.name.casefold())
+                if name_counts[name_key] >= duplicate_limit:
+                    continue
+                if file_counts[item.file_path] >= per_file_limit:
+                    continue
+                selected.append(item)
+                selected_ids.add(item.id)
+                name_counts[name_key] += 1
+                file_counts[item.file_path] += 1
+                progressed = True
+                break
+            if len(selected) >= max_nodes:
+                break
+        if not progressed:
+            break
+
+    if len(selected) < max_nodes:
+        remaining = sorted(
+            (item for item in entities if item.id not in selected_ids),
+            key=lambda item: (
+                type_order.index(item.type) if item.type in type_order else len(type_order),
+                0 if item.metadata.get("entrypoint") else 1,
+                -degree[item.id],
+                item.file_path,
+                item.line_start,
+            ),
+        )
+        selected.extend(remaining[: max_nodes - len(selected)])
+    return selected
 
 
 def _workflow_graph(
@@ -895,6 +964,7 @@ def _project_entities(
                 "line": item.line_start,
                 "language": item.language,
                 "entrypoint": bool(item.metadata.get("entrypoint")),
+                "qualified_name": item.qualified_name,
             },
         )
         for item in entities

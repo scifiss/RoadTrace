@@ -43,14 +43,22 @@ class GitHistoryAnalyzer:
         self.max_commits = max_commits
 
     def analyze(self, repository: Path) -> tuple[list[CommitRecord], str | None, list[str]]:
+        hashes = [
+            item
+            for item in self.runner.run(["rev-list", "--reverse", "HEAD"], cwd=repository)
+            .splitlines()
+            if item
+        ]
+        selected_hashes = _sample_commit_hashes(hashes, self.max_commits)
         output = self.runner.run(
             [
                 "log",
-                f"--max-count={self.max_commits}",
+                "--no-walk=unsorted",
                 "--date=iso-strict",
                 "--no-renames",
-                "--numstat",
+                "--name-only",
                 "--format=@@ROADTRACE@@%H%x1f%aI%x1f%an%x1f%s",
+                *selected_hashes,
             ],
             cwd=repository,
         )
@@ -60,10 +68,15 @@ class GitHistoryAnalyzer:
             commit.tags = tags.get(commit.hash, [])
         commits.sort(key=lambda commit: commit.timestamp)
         warnings: list[str] = []
-        count_output = self.runner.run(["rev-list", "--count", "HEAD"], cwd=repository).strip()
-        if count_output.isdigit() and int(count_output) >= self.max_commits:
+        if len(hashes) > len(selected_hashes):
             warnings.append(
-                f"History is bounded to the newest {self.max_commits} commits in the shallow clone"
+                f"History overview samples {len(selected_hashes)} commits across "
+                f"{len(hashes)} reachable commits"
+            )
+        shallow = self.runner.run(["rev-parse", "--is-shallow-repository"], cwd=repository).strip()
+        if shallow == "true":
+            warnings.append(
+                f"Repository history is bounded to the newest {len(hashes)} commits by clone depth"
             )
         branch_output = self.runner.run(
             ["symbolic-ref", "--quiet", "--short", "HEAD"], cwd=repository
@@ -112,11 +125,14 @@ class GitHistoryAnalyzer:
                     "deletions": 0,
                 }
                 continue
-            if current is None or not line or "\t" not in line:
+            if current is None or not line:
                 continue
-            additions, deletions, path = line.split("\t", 2)
             paths = current["paths"]
             assert isinstance(paths, list)
+            if "\t" not in line:
+                paths.append(line)
+                continue
+            additions, deletions, path = line.split("\t", 2)
             paths.append(path)
             if additions.isdigit():
                 current["additions"] = int(current["additions"]) + int(additions)
@@ -125,6 +141,27 @@ class GitHistoryAnalyzer:
         if current is not None:
             commits.append(_commit_from_parts(current))
         return commits
+
+
+def _sample_commit_hashes(hashes: list[str], limit: int) -> list[str]:
+    if len(hashes) <= limit:
+        return hashes
+    if limit == 1:
+        return [hashes[0]]
+
+    recent_count = max(1, limit // 2)
+    historical_count = limit - recent_count
+    older = hashes[:-recent_count]
+    recent = hashes[-recent_count:]
+    if historical_count == 1:
+        historical = [older[0]]
+    else:
+        last_index = len(older) - 1
+        historical = [
+            older[round(index * last_index / (historical_count - 1))]
+            for index in range(historical_count)
+        ]
+    return list(dict.fromkeys([*historical, *recent]))
 
 
 def _commit_from_parts(parts: dict[str, object]) -> CommitRecord:

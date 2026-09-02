@@ -143,7 +143,7 @@ class PublicGitHubAcquirer:
                 "--single-branch",
                 "--no-recurse-submodules",
                 f"--depth={self.settings.clone_depth}",
-                f"--filter=blob:limit={self.settings.max_file_bytes}",
+                "--filter=blob:none",
                 f"--template={template}",
                 "--",
                 identity.url,

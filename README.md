@@ -20,8 +20,8 @@ and open any inferred capability to see the evidence behind it.
   routes, imports, calls, inheritance, and test relationships.
 - Structural/dependency graph plus explicitly best-effort workflow and data-flow
   projections.
-- Bounded Git history, changed paths, line summaries, tags, change-type heuristics,
-  and first/last capability estimates.
+- Bounded Git history sampled across the reachable project span, changed paths,
+  tags, change-type heuristics, and first/last capability estimates.
 - Grounded capabilities under RoadTrace's eight canonical categories.
 - Explicit `DISCOVERED` → `PRODUCTIONIZED` maturity states backed by named evidence
   dimensions—never an invented completion percentage.
@@ -162,8 +162,8 @@ against the implementation brief is tracked in [the milestone checklist](docs/V0
 
 - Static call resolution is lexical and conservative; it is not full type-aware,
   interprocedural control-flow analysis. Workflow/data projections say **inferred**.
-- The bounded shallow clone can miss capability origins older than the configured
-  history window.
+- The partial, depth-bounded clone can miss capability origins in repositories with
+  more commits than the configured history depth; RoadTrace reports that boundary.
 - GitHub pull requests, issues, and release descriptions are not fetched; local Git
   commits and tags are used.
 - Capability clustering is deliberately small and deterministic. Optional semantics

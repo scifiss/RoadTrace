@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 
 from app.analysis.history import GitHistoryAnalyzer
-from app.analysis.modeling import maturity_state
-from app.domain import CanonicalCategory, MaturitySignals, MaturityState
+from app.analysis.modeling import _balanced_code_entities, maturity_state
+from app.domain import CanonicalCategory, CodeEntity, EntityType, MaturitySignals, MaturityState
 from app.ingestion.repository import GitHubRepository, GitRunner
 from app.main import create_app
 from app.service import AnalysisService
@@ -32,6 +32,20 @@ def test_git_history_extracts_multiple_commits(synthetic_repository: Path, setti
     assert not warnings
 
 
+def test_git_history_samples_across_the_reachable_history(
+    synthetic_repository: Path, settings
+) -> None:
+    commits, _, warnings = GitHistoryAnalyzer(
+        GitRunner(settings.git_timeout_seconds), max_commits=3
+    ).analyze(synthetic_repository)
+
+    assert len(commits) == 3
+    assert commits[0].subject == "initial CLI"
+    assert commits[-1].tags == ["v0.1.0"]
+    assert all(commit.changed_paths for commit in commits)
+    assert warnings == ["History overview samples 3 commits across 6 reachable commits"]
+
+
 def test_maturity_is_ordinal_and_evidence_dimension_based() -> None:
     assert maturity_state(MaturitySignals(), 0) == MaturityState.DISCOVERED
     assert maturity_state(MaturitySignals(implementation=True), 1) == MaturityState.SCAFFOLDED
@@ -44,6 +58,46 @@ def test_maturity_is_ordinal_and_evidence_dimension_based() -> None:
             MaturitySignals(implementation=True, exposed=True, tests=True, operations=True), 4
         )
         == MaturityState.PRODUCTIONIZED
+    )
+
+
+def test_code_graph_selection_balances_repeated_entrypoints() -> None:
+    repeated_mains = [
+        CodeEntity(
+            id=f"main-{index}",
+            type=EntityType.FUNCTION,
+            name="main",
+            qualified_name=f"scripts.job_{index}.main",
+            file_path=f"scripts/job_{index}.py",
+            language="Python",
+            metadata={"entrypoint": True},
+        )
+        for index in range(40)
+    ]
+    landmarks = [
+        CodeEntity(
+            id=f"{entity_type.value}-{index}",
+            type=entity_type,
+            name=f"{entity_type.value.title()}{index}",
+            qualified_name=f"package.{entity_type.value.lower()}{index}",
+            file_path=f"package/{entity_type.value.lower()}{index}.py",
+            language="Python",
+        )
+        for entity_type in (
+            EntityType.SCHEMA,
+            EntityType.CLASS,
+            EntityType.MODULE,
+            EntityType.CONFIGURATION,
+        )
+        for index in range(4)
+    ]
+
+    selected = _balanced_code_entities([*repeated_mains, *landmarks], [], max_nodes=12)
+
+    assert len(selected) == 12
+    assert len([item for item in selected if item.name == "main"]) == 2
+    assert {item.type for item in selected}.issuperset(
+        {EntityType.SCHEMA, EntityType.CLASS, EntityType.MODULE, EntityType.CONFIGURATION}
     )
 
 

@@ -45,8 +45,8 @@ class Settings:
         return cls(
             database_path=Path(os.getenv("ROADTRACE_DATABASE_PATH", "roadtrace.sqlite3")),
             max_files=_positive_int("ROADTRACE_MAX_FILES", 3_000),
-            max_commits=_positive_int("ROADTRACE_MAX_COMMITS", 250),
-            clone_depth=_positive_int("ROADTRACE_CLONE_DEPTH", 300),
+            max_commits=_positive_int("ROADTRACE_MAX_COMMITS", 500),
+            clone_depth=_positive_int("ROADTRACE_CLONE_DEPTH", 5_000),
             max_file_bytes=_positive_int("ROADTRACE_MAX_FILE_BYTES", 1_000_000),
             max_source_bytes=_positive_int("ROADTRACE_MAX_SOURCE_BYTES", 30_000_000),
             max_repository_bytes=_positive_int("ROADTRACE_MAX_REPOSITORY_BYTES", 300_000_000),

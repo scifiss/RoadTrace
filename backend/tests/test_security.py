@@ -57,6 +57,7 @@ def test_clone_boundary_uses_bounded_argument_array(settings, tmp_path: Path) ->
         acquired = stack.enter_context(acquirer.acquire("https://github.com/owner/repository"))
         assert acquired.path.is_dir()
     assert "--no-recurse-submodules" in captured
+    assert "--filter=blob:none" in captured
     assert any(item.startswith("--depth=") for item in captured)
     assert "--" in captured
     assert captured[-2] == "https://github.com/owner/repository"

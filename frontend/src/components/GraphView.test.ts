@@ -54,4 +54,36 @@ describe('focused graph selection', () => {
 
     expect(selected).toBe(graph)
   })
+
+  it('balances the overview and caps repeated symbol names', () => {
+    const repeatedNodes = Array.from({ length: 36 }, (_, index) => ({
+      id: `main-${index}`,
+      label: 'main',
+      kind: 'FUNCTION',
+      group: `scripts/job_${index}.py`,
+      metadata: { entrypoint: true, file_path: `scripts/job_${index}.py` },
+    }))
+    const diverseGraph: GraphProjection = {
+      ...graph,
+      nodes: [
+        ...repeatedNodes,
+        { id: 'module', label: 'pipeline', kind: 'MODULE', group: 'pipeline.py', metadata: {} },
+        { id: 'schema', label: 'RunConfig', kind: 'SCHEMA', group: 'config.py', metadata: {} },
+        { id: 'api', label: 'start_run', kind: 'API_ENDPOINT', group: 'api.py', metadata: {} },
+      ],
+      edges: [],
+    }
+
+    const selected = selectGraphProjection(diverseGraph, {
+      depth: 1,
+      focusId: null,
+      query: '',
+      showFull: false,
+    })
+
+    expect(selected.nodes.filter((node) => node.label === 'main')).toHaveLength(2)
+    expect(selected.nodes.map((node) => node.id)).toEqual(
+      expect.arrayContaining(['module', 'schema', 'api']),
+    )
+  })
 })

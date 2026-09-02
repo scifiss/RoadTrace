@@ -1990,3 +1990,840 @@ select:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+/* Compact landing page and evidence-dense reverse roadmap. */
+.app-shell--landing {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.app-shell--landing .topbar {
+  height: 64px;
+}
+
+.app-shell--landing .landing {
+  width: min(1280px, calc(100% - 48px));
+  min-height: 0;
+  margin: 0 auto;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.68fr);
+  gap: clamp(42px, 6vw, 76px);
+  padding: 46px 0 58px;
+}
+
+.app-shell--landing .hero h1 {
+  max-width: 700px;
+  font-size: clamp(44px, 4.8vw, 70px);
+  line-height: 1.01;
+}
+
+.app-shell--landing .hero__copy {
+  max-width: 585px;
+  margin: 21px 0 25px;
+  font-size: clamp(15px, 1.1vw, 17px);
+  line-height: 1.55;
+}
+
+.app-shell--landing .analysis-form,
+.app-shell--landing .analysis-progress,
+.app-shell--landing .error-banner {
+  width: min(650px, 100%);
+}
+
+.app-shell--landing .url-control {
+  height: 52px;
+}
+
+.app-shell--landing .trust-line {
+  gap: 10px 20px;
+  margin-top: 14px;
+  font-size: 9px;
+}
+
+.app-shell--landing .hero-aside {
+  width: min(360px, 100%);
+  justify-self: end;
+  padding: 0;
+}
+
+.app-shell--landing .layer-card {
+  width: 100%;
+  min-height: 76px;
+  padding: 14px 18px;
+  box-shadow: 0 10px 26px rgba(53, 50, 42, 0.06);
+  transform: none;
+}
+
+.app-shell--landing .layer-card span {
+  font-size: 9px;
+}
+
+.app-shell--landing .layer-card strong {
+  font-size: 17px;
+}
+
+.app-shell--landing .layer-connector {
+  height: 14px;
+}
+
+.app-shell--landing .landing-footer {
+  height: 44px;
+}
+
+.roadmap-section {
+  --timeline-label-width: 250px;
+}
+
+.roadmap-heading {
+  margin-bottom: 20px;
+}
+
+.roadmap-heading h2 {
+  font-size: clamp(32px, 3vw, 46px);
+}
+
+.app-shell--analysis .roadmap-section .timeline-filters {
+  grid-template-columns: minmax(250px, 1fr) minmax(150px, 0.38fr) minmax(150px, 0.38fr) auto;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.timeline-range-reset {
+  min-width: 176px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  border: 1px solid #354b69;
+  border-radius: 7px;
+  background: #102039;
+  color: #dce8f7;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.timeline-range-reset span {
+  color: #7790af;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.timeline-range-reset:disabled {
+  border-color: rgba(88, 213, 231, 0.42);
+  background: rgba(88, 213, 231, 0.1);
+  color: #7be1ec;
+  cursor: default;
+}
+
+.roadmap-meta {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 10px 2px 12px;
+}
+
+.roadmap-meta > p {
+  flex: 0 0 auto;
+  margin: 0;
+  color: #90a3bd;
+  font-size: 12px;
+}
+
+.roadmap-meta > p strong {
+  color: #e5eef9;
+  font-weight: 720;
+}
+
+.timeline-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 9px 15px;
+}
+
+.timeline-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #9aacbf;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.timeline-legend-mark {
+  width: 9px;
+  height: 9px;
+  display: inline-block;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
+.app-shell--analysis .roadmap-section .timeline-scroll {
+  overflow: auto;
+  border: 1px solid #2a3c57;
+  border-radius: 12px;
+  background: rgba(9, 23, 40, 0.82);
+}
+
+.timeline-table {
+  width: 100%;
+  min-width: 900px;
+}
+
+.timeline-axis-row,
+.timeline-activity-row,
+.timeline-row {
+  display: grid;
+  grid-template-columns: var(--timeline-label-width) minmax(0, 1fr);
+}
+
+.timeline-axis-row {
+  min-height: 58px;
+  border-bottom: 1px solid #2b3d58;
+  background: #0d1b2f;
+}
+
+.timeline-axis-title,
+.timeline-row-label {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  flex-direction: column;
+  border: 0;
+  border-right: 1px solid #2b3d58;
+  background: #0d1b2f;
+  padding: 10px 16px;
+  color: #e7effa;
+  text-align: left;
+}
+
+.timeline-axis-title strong,
+.timeline-row-label strong {
+  width: 100%;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-axis-title span,
+.timeline-row-label span {
+  width: 100%;
+  overflow: hidden;
+  margin-top: 3px;
+  color: #8095b1;
+  font-size: 10px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-axis-track,
+.timeline-track,
+.timeline-activity-track {
+  position: relative;
+  min-width: 0;
+}
+
+.timeline-axis-track {
+  margin: 0 20px;
+}
+
+.timeline-axis-tick {
+  position: absolute;
+  top: 50%;
+  color: #90a7c2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+
+.timeline-axis-tick[data-edge="start"] {
+  transform: translate(0, -50%);
+}
+
+.timeline-axis-tick[data-edge="end"] {
+  transform: translate(-100%, -50%);
+}
+
+.timeline-activity-row {
+  height: 52px;
+  border-bottom: 1px solid #263850;
+  background: rgba(13, 27, 47, 0.5);
+}
+
+.timeline-row-label--activity {
+  background: #0b192b;
+}
+
+.timeline-activity-track {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  margin: 0 20px;
+  padding: 10px 0 8px;
+}
+
+.timeline-activity-bar {
+  z-index: 1;
+  flex: 1 1 0;
+  border-radius: 2px 2px 0 0;
+  background: rgba(88, 213, 231, 0.5);
+}
+
+.timeline-row {
+  min-height: 66px;
+  border-bottom: 1px solid rgba(43, 61, 88, 0.78);
+}
+
+.timeline-row:last-child {
+  border-bottom: 0;
+}
+
+button.timeline-row-label {
+  cursor: pointer;
+}
+
+button.timeline-row-label:hover,
+button.timeline-row-label:focus-visible {
+  background: #12233a;
+}
+
+.timeline-track {
+  min-height: 66px;
+  margin: 0 20px;
+}
+
+.timeline-gridline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(64, 86, 117, 0.42);
+}
+
+.timeline-evolution-line {
+  position: absolute;
+  top: calc(50% - 1px);
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(88, 213, 231, 0.35), rgba(112, 167, 255, 0.62));
+}
+
+.timeline-marker {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 2px solid #091728;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(231, 239, 250, 0.16);
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+
+.timeline-marker--origin { background: #58d5e7; }
+.timeline-marker--feature { background: #70a7ff; }
+.timeline-marker--quality { background: #34c99a; }
+.timeline-marker--fix { background: #f06b67; }
+.timeline-marker--operations { background: #e7aa42; }
+
+.timeline-marker--diamond {
+  border-radius: 2px;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.timeline-legend-mark.timeline-marker--diamond {
+  transform: rotate(45deg);
+}
+
+.timeline-marker:hover,
+.timeline-marker:focus-visible {
+  z-index: 8;
+  box-shadow: 0 0 0 4px rgba(88, 213, 231, 0.16);
+}
+
+.timeline-tooltip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  z-index: 10;
+  width: 238px;
+  display: block;
+  padding: 11px 12px;
+  border: 1px solid #3a506f;
+  border-radius: 7px;
+  background: #12233a;
+  color: #e9f1fb;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  transform: translateX(-50%);
+  transition: opacity 120ms ease;
+}
+
+.timeline-marker--diamond .timeline-tooltip {
+  transform: translateX(-50%) rotate(-45deg);
+  transform-origin: bottom center;
+}
+
+.timeline-marker:hover .timeline-tooltip,
+.timeline-marker:focus-visible .timeline-tooltip {
+  opacity: 1;
+}
+
+.timeline-tooltip strong,
+.timeline-tooltip small,
+.timeline-tooltip em {
+  display: block;
+}
+
+.timeline-tooltip strong {
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.timeline-tooltip small {
+  margin-top: 4px;
+  color: #87a0bd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+}
+
+.timeline-tooltip em {
+  margin-top: 7px;
+  color: #becbdd;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.4;
+}
+
+.roadmap-section .timeline-empty {
+  min-height: 190px;
+  border-radius: 12px;
+}
+
+@media (max-width: 1060px) {
+  .app-shell--landing .landing {
+    width: min(760px, calc(100% - 44px));
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell--landing .hero-aside {
+    display: none;
+  }
+
+  .roadmap-meta {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .timeline-legend {
+    justify-content: flex-start;
+  }
+
+  .app-shell--analysis .roadmap-section .timeline-filters {
+    grid-template-columns: minmax(220px, 1fr) 1fr 1fr;
+  }
+
+  .timeline-range-reset {
+    grid-column: 1 / -1;
+    width: max-content;
+    min-width: 190px;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell--landing .topbar {
+    height: 60px;
+  }
+
+  .app-shell--landing .landing {
+    width: calc(100% - 36px);
+    min-height: 0;
+    padding: 34px 0 46px;
+  }
+
+  .app-shell--landing .hero h1 {
+    font-size: clamp(38px, 12vw, 54px);
+  }
+
+  .app-shell--landing .hero__copy {
+    margin: 18px 0 22px;
+  }
+
+  .app-shell--landing .landing-footer {
+    height: 42px;
+  }
+
+  .app-shell--analysis .roadmap-section .timeline-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .app-shell--analysis .roadmap-section .timeline-filters label:first-child,
+  .timeline-range-reset {
+    grid-column: 1 / -1;
+  }
+
+  .roadmap-section {
+    --timeline-label-width: 210px;
+  }
+
+  .timeline-table {
+    min-width: 800px;
+  }
+}
+
+@media (max-width: 460px) {
+  .app-shell--analysis .roadmap-section .timeline-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell--analysis .roadmap-section .timeline-filters label,
+  .timeline-range-reset {
+    grid-column: 1;
+    width: 100%;
+  }
+}
+
+/* Compact analysis chrome and more informative code-graph nodes. */
+.app-shell--analysis .topbar {
+  height: 58px;
+  padding-inline: clamp(22px, 3vw, 50px);
+}
+
+.app-shell--analysis .topbar > p {
+  font-size: 11px;
+}
+
+.app-shell--analysis .button--quiet {
+  min-height: 34px;
+  padding-inline: 13px;
+  font-size: 10px;
+}
+
+.app-shell--analysis .analysis-main {
+  padding-top: 24px;
+  padding-bottom: 72px;
+}
+
+.app-shell--analysis .repository-header {
+  align-items: center;
+  gap: 40px;
+  padding: 0 0 18px;
+}
+
+.app-shell--analysis .repository-header .eyebrow {
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+
+.app-shell--analysis .repository-header h1 {
+  margin-bottom: 7px;
+  font-size: clamp(34px, 3.2vw, 49px);
+  letter-spacing: -0.045em;
+}
+
+.app-shell--analysis .repository-header a {
+  font-size: 13px;
+}
+
+.app-shell--analysis .repository-stats {
+  gap: 22px;
+}
+
+.app-shell--analysis .repository-stats div {
+  padding-left: 14px;
+}
+
+.app-shell--analysis .repository-stats dt {
+  font-size: 10px;
+}
+
+.app-shell--analysis .repository-stats dd {
+  margin-top: 5px;
+  font-size: 14px;
+}
+
+.app-shell--analysis .analysis-summary {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.app-shell--analysis .analysis-summary > div {
+  min-height: 94px;
+  padding: 15px 17px;
+  border-radius: 12px;
+}
+
+.app-shell--analysis .analysis-summary dt {
+  font-size: 14px;
+  font-weight: 620;
+}
+
+.app-shell--analysis .analysis-summary dd {
+  font-size: clamp(29px, 2.3vw, 37px);
+}
+
+.app-shell--analysis .warning-banner {
+  margin-top: 14px;
+}
+
+.app-shell--analysis .workspace-navigation {
+  margin-top: 18px;
+}
+
+.app-shell--analysis .workspace-navigation__top {
+  gap: 8px;
+}
+
+.app-shell--analysis .view-tabs {
+  gap: 6px;
+}
+
+.app-shell--analysis .view-tabs button {
+  padding: 10px 16px;
+  font-size: 14px;
+}
+
+.app-shell--analysis .workspace-search {
+  height: 40px;
+  min-height: 40px;
+  padding-inline: 14px;
+}
+
+.app-shell--analysis .workspace-search input {
+  font-size: 14px;
+}
+
+.app-shell--analysis .category-chip {
+  min-height: 41px;
+  padding-inline: 15px;
+  font-size: 14px;
+}
+
+.app-shell--analysis .category-chip small {
+  min-width: 23px;
+  height: 23px;
+  font-size: 11px;
+}
+
+.app-shell--analysis .roadmap-meta > p {
+  font-size: 15px;
+}
+
+.app-shell--analysis .timeline-legend > span {
+  font-size: 14px;
+}
+
+.app-shell--analysis .timeline-legend-mark {
+  width: 11px;
+  height: 11px;
+}
+
+.app-shell--analysis .timeline-axis-tick {
+  font-size: 12px;
+}
+
+.app-shell--analysis .roadmap-heading > p {
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.app-shell--analysis .timeline-filters label > span {
+  font-size: 11px;
+}
+
+.app-shell--analysis .timeline-filters select,
+.app-shell--analysis .timeline-filters input {
+  font-size: 14px;
+}
+
+.app-shell--analysis .timeline-range-reset {
+  font-size: 13px;
+}
+
+.app-shell--analysis .timeline-axis-title strong,
+.app-shell--analysis .timeline-row-label strong {
+  font-size: 15px;
+}
+
+.app-shell--analysis .timeline-axis-title span,
+.app-shell--analysis .timeline-row-label span {
+  font-size: 12px;
+}
+
+.app-shell--analysis .timeline-row,
+.app-shell--analysis .timeline-track {
+  min-height: 72px;
+}
+
+.app-shell--analysis .section-block,
+.app-shell--analysis .graph-card {
+  margin-top: 26px;
+}
+
+.app-shell--analysis .graph-card__heading {
+  grid-template-columns: 1fr minmax(260px, 430px);
+  gap: 30px;
+  margin-bottom: 14px;
+}
+
+.app-shell--analysis .graph-card__heading .eyebrow {
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+
+.app-shell--analysis .graph-card__heading h2 {
+  font-size: clamp(27px, 2.4vw, 36px);
+}
+
+.app-shell--analysis .graph-card__heading > p {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-shell--analysis .graph-toolbar {
+  min-height: 60px;
+  padding: 10px;
+}
+
+.app-shell--analysis .graph-toolbar label > span,
+.app-shell--analysis .graph-depth > span {
+  font-size: 11px;
+}
+
+.app-shell--analysis .graph-toolbar select {
+  height: 40px;
+  font-size: 14px;
+}
+
+.app-shell--analysis .graph-depth button,
+.app-shell--analysis .graph-show-all {
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.app-shell--analysis .graph-toolbar__status {
+  font-size: 12px;
+}
+
+.app-shell--analysis .graph-canvas {
+  height: min(66vh, 660px);
+  min-height: 480px;
+}
+
+.app-shell--analysis .flow-node {
+  width: 225px !important;
+  min-height: 76px;
+  padding: 10px 12px !important;
+}
+
+.app-shell--analysis .flow-node__label {
+  width: 100%;
+  gap: 3px;
+}
+
+.app-shell--analysis .flow-node__label strong {
+  width: 100%;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.app-shell--analysis .flow-node__label small {
+  width: 100%;
+  overflow: hidden;
+  color: #9fb2c9;
+  font-size: 11px;
+  font-weight: 550;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.app-shell--analysis .flow-node__label em {
+  color: #7187a3;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 780;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.app-shell--analysis .overview .section-heading > p {
+  font-size: 14px;
+}
+
+.app-shell--analysis .category-card__title {
+  font-size: 19px;
+}
+
+.app-shell--analysis .category-card__title span,
+.app-shell--analysis .capability-list button {
+  font-size: 14px;
+}
+
+.app-shell--analysis .capability-list > small {
+  font-size: 12px;
+}
+
+.app-shell--analysis .count-badge {
+  font-size: 11px;
+}
+
+.app-shell--analysis .constellation-card__heading > div:first-child > p:last-child {
+  font-size: 14px;
+}
+
+.app-shell--analysis .constellation-legend {
+  font-size: 13px;
+}
+
+.app-shell--analysis .constellation-note {
+  font-size: 12px;
+}
+
+.app-shell--analysis .constellation-node--category small {
+  font-size: 13px;
+}
+
+.app-shell--analysis .constellation-satellite__label strong {
+  font-size: 14px;
+}
+
+.app-shell--analysis .constellation-satellite__label small {
+  font-size: 11px;
+}
+
+@media (max-width: 920px) {
+  .app-shell--analysis .analysis-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .app-shell--analysis .analysis-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-shell--analysis .analysis-summary > div:last-child {
+    grid-column: 1 / -1;
+  }
+}

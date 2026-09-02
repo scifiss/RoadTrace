@@ -59,9 +59,10 @@ export function GraphView({ graph, capabilities, onSelectCapability, query }: Gr
     [visibleGraph],
   )
   const focusNode = graph.nodes.find((node) => node.id === focusId)
-  const options = graph.nodes
+  const options = [...graph.nodes]
     .filter((node) => matchesGraphNode(node, query))
-    .slice(0, 80)
+    .sort(compareGraphNodes)
+    .slice(0, 100)
 
   return (
     <section className="graph-card" aria-label={graph.label}>
@@ -87,7 +88,9 @@ export function GraphView({ graph, capabilities, onSelectCapability, query }: Gr
           >
             <option value="">Overview</option>
             {options.map((node) => (
-              <option key={node.id} value={node.id}>{node.label} · {formatKind(node.kind)}</option>
+              <option key={node.id} value={node.id}>
+                {node.label} · {nodeContext(node)} · {formatKind(node.kind)}
+              </option>
             ))}
           </select>
         </label>
@@ -169,13 +172,16 @@ function layoutNodes(graph: GraphProjection, focusId: string | null): Node[] {
       : { x: (index % 5) * 245, y: Math.floor(index / 5) * 92 }
     return {
       id: item.id,
-      ariaLabel: `${item.label}, ${formatKind(item.kind)}`,
+      ariaLabel: `${item.label}, ${nodeContext(item)}, ${formatKind(item.kind)}`,
       position,
       data: {
         label: (
           <span className="flow-node__label">
             <strong>{item.label}</strong>
-            <small>{formatKind(item.kind)}</small>
+            <small title={String(item.metadata.file_path ?? item.group ?? '')}>
+              {nodeContext(item)}
+            </small>
+            <em>{formatKind(item.kind)}</em>
           </span>
         ),
       },
@@ -186,6 +192,35 @@ function layoutNodes(graph: GraphProjection, focusId: string | null): Node[] {
       },
     }
   })
+}
+
+function nodeContext(node: GraphNode): string {
+  const path = String(node.metadata.file_path ?? node.group ?? '')
+  const compactPath = path.split('/').filter(Boolean).slice(-2).join('/') || 'project structure'
+  const line = Number(node.metadata.line)
+  return Number.isFinite(line) && line > 0 ? `${compactPath}:${line}` : compactPath
+}
+
+function compareGraphNodes(left: GraphNode, right: GraphNode): number {
+  const kindOrder = [
+    'API_ENDPOINT',
+    'UI_COMPONENT',
+    'SCHEMA',
+    'CLASS',
+    'MODULE',
+    'CONFIGURATION',
+    'FUNCTION',
+    'TEST',
+    'METHOD',
+    'EXTERNAL_MODULE',
+    'FILE',
+  ]
+  const leftKind = kindOrder.indexOf(left.kind)
+  const rightKind = kindOrder.indexOf(right.kind)
+  const kindDifference = (leftKind < 0 ? kindOrder.length : leftKind)
+    - (rightKind < 0 ? kindOrder.length : rightKind)
+  if (kindDifference) return kindDifference
+  return left.label.localeCompare(right.label) || nodeContext(left).localeCompare(nodeContext(right))
 }
 
 function assignLayers(graph: GraphProjection, focusId: string): Map<string, number> {

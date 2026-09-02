@@ -34,6 +34,35 @@ export function roadmapDateBounds(
   }
 }
 
+export function roadmapTimeTicks(min: Date, max: Date, requestedCount = 6): Date[] {
+  const range = max.getTime() - min.getTime()
+  const dayCount = Math.max(1, Math.round(range / 86_400_000))
+  const count = Math.max(2, Math.min(requestedCount, dayCount + 1))
+  return Array.from(
+    { length: count },
+    (_, index) => new Date(min.getTime() + (range * index) / (count - 1)),
+  )
+}
+
+export function formatRoadmapTick(date: Date, min: Date, max: Date): string {
+  const days = (max.getTime() - min.getTime()) / 86_400_000
+  if (days <= 62) {
+    return new Intl.DateTimeFormat('en', {
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'UTC',
+    }).format(date)
+  }
+  if (days <= 730) {
+    return new Intl.DateTimeFormat('en', {
+      month: 'short',
+      timeZone: 'UTC',
+      year: 'numeric',
+    }).format(date)
+  }
+  return new Intl.DateTimeFormat('en', { timeZone: 'UTC', year: 'numeric' }).format(date)
+}
+
 function dateInputValue(value: string | null): string {
   if (!value) return ''
   const date = new Date(value)
