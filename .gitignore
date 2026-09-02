@@ -1,0 +1,13 @@
+.venv/
+.deps/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.py[cod]
+*.sqlite3
+.env
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
