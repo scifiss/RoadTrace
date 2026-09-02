@@ -928,8 +928,7 @@ select:focus-visible {
   font-weight: 400;
 }
 
-.react-flow__controls,
-.react-flow__minimap {
+.react-flow__controls {
   border: 1px solid var(--rule) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -1834,8 +1833,7 @@ select:focus-visible {
   color: #efc574;
 }
 
-.app-shell--analysis .react-flow__controls,
-.app-shell--analysis .react-flow__minimap {
+.app-shell--analysis .react-flow__controls {
   border-color: #314761 !important;
   background: #102039 !important;
 }

@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import {
   Background,
   Controls,
-  MiniMap,
   ReactFlow,
   MarkerType,
   type Edge,
@@ -136,7 +135,6 @@ export function GraphView({ graph, capabilities, onSelectCapability, query }: Gr
             proOptions={{ hideAttribution: true }}
           >
             <Background color="#20324e" gap={28} size={1} />
-            <MiniMap pannable zoomable nodeColor={(node) => String(node.style?.background ?? '#7890ae')} />
             <Controls showInteractive={false} />
           </ReactFlow>
         </div>

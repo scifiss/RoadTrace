@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { AnalysisResult, CanonicalCategory, Capability, TimelineEvent } from '../types'
+import { repositoryHistoryRange, roadmapDateBounds } from './roadmapDates'
 
 interface ReverseRoadmapProps {
   category: CanonicalCategory | 'ALL'
@@ -9,9 +10,13 @@ interface ReverseRoadmapProps {
 }
 
 export function ReverseRoadmap({ category, query, result, onSelectCapability }: ReverseRoadmapProps) {
+  const historyRange = useMemo(
+    () => repositoryHistoryRange(result.repository, result.timeline.map((event) => event.timestamp)),
+    [result.repository, result.timeline],
+  )
   const [capabilityId, setCapabilityId] = useState('ALL')
-  const [start, setStart] = useState('')
-  const [end, setEnd] = useState('')
+  const [start, setStart] = useState(historyRange.start)
+  const [end, setEnd] = useState(historyRange.end)
   const capabilityMap = useMemo(
     () => new Map(result.capabilities.map((item) => [item.id, item])),
     [result.capabilities],
@@ -39,7 +44,7 @@ export function ReverseRoadmap({ category, query, result, onSelectCapability }: 
     const day = event.timestamp.slice(0, 10)
     return (!start || day >= start) && (!end || day <= end)
   })
-  const dateBounds = timelineBounds(events, result)
+  const dateBounds = roadmapDateBounds(start, end, historyRange)
   const lanes = new Map<string, number>()
   events.forEach((event) => {
     if (!lanes.has(event.capability_id)) lanes.set(event.capability_id, lanes.size)
@@ -119,19 +124,6 @@ export function ReverseRoadmap({ category, query, result, onSelectCapability }: 
       )}
     </section>
   )
-}
-
-function timelineBounds(events: TimelineEvent[], result: AnalysisResult) {
-  const dates = events.map((event) => new Date(event.timestamp).getTime())
-  const fallbackStart = result.repository.history_start
-    ? new Date(result.repository.history_start).getTime()
-    : Date.now()
-  const fallbackEnd = result.repository.history_end
-    ? new Date(result.repository.history_end).getTime()
-    : fallbackStart + 86_400_000
-  const min = new Date(dates.length ? Math.min(...dates) : fallbackStart)
-  const maxValue = dates.length ? Math.max(...dates) : fallbackEnd
-  return { min, max: new Date(Math.max(maxValue, min.getTime() + 86_400_000)) }
 }
 
 function eventPosition(event: TimelineEvent, min: Date, max: Date): number {

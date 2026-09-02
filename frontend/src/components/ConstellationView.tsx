@@ -2,7 +2,6 @@ import { useMemo } from 'react'
 import {
   Background,
   Controls,
-  MiniMap,
   ReactFlow,
   type Edge,
   type Node,
@@ -110,11 +109,6 @@ export function ConstellationView({
               proOptions={{ hideAttribution: true }}
             >
               <Background className="constellation-grid" color="#20324e" gap={40} size={1} />
-              <MiniMap
-                pannable
-                zoomable
-                nodeColor={(node) => String(node.style?.background ?? '#7f92ad')}
-              />
               <Controls showInteractive={false} />
             </ReactFlow>
           </div>

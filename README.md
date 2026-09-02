@@ -44,23 +44,28 @@ scripts, tests, interpreters, or build tools from an analyzed repository.
 
 ## Run locally
 
-From the repository root, create the backend environment:
+From the repository root, create the backend environment and install the frontend:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e './backend[dev]'
 cp .env.example .env
-uvicorn app.main:app --app-dir backend --reload --port 8000
-```
-
-In a second terminal:
-
-```bash
 cd frontend
 npm install
-npm run dev
+cd ..
 ```
+
+Then start both the API and web client with:
+
+```bash
+./scripts/dev.sh
+```
+
+For manual development, run `uvicorn app.main:app --app-dir backend --reload
+--port 8000` from the repository root and `npm run dev` from `frontend/` in a
+second terminal. Running Vite by itself displays the interface, but repository
+analysis cannot work without the API on port 8000.
 
 Open `http://localhost:5173`, paste a public repository URL, and select **Analyze
 repository**. Vite proxies `/api` to `http://localhost:8000` in development.
