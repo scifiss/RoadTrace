@@ -8,6 +8,7 @@ function formatDate(value: string | null): string {
 
 export function RepositoryHeader({ repository }: { repository: RepositorySummary }) {
   const languages = Object.keys(repository.languages)
+  const isLocal = repository.url.startsWith('local://')
   return (
     <header className="repository-header">
       <div>
@@ -15,9 +16,13 @@ export function RepositoryHeader({ repository }: { repository: RepositorySummary
           {repository.owner} / <span>{repository.default_branch ?? 'default'}</span>
         </p>
         <h1>{repository.name}</h1>
-        <a href={repository.url} rel="noreferrer" target="_blank">
-          View public repository <span aria-hidden="true">↗</span>
-        </a>
+        {isLocal ? (
+          <span>Local development repository</span>
+        ) : (
+          <a href={repository.url} rel="noreferrer" target="_blank">
+            View public repository <span aria-hidden="true">↗</span>
+          </a>
+        )}
       </div>
       <dl className="repository-stats">
         <div>

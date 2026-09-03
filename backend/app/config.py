@@ -18,6 +18,26 @@ def _positive_int(name: str, default: int) -> int:
     return value
 
 
+def _boolean(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    normalized = raw.strip().casefold()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be true or false")
+
+
+def _paths(name: str) -> tuple[Path, ...]:
+    return tuple(
+        Path(value.strip()).expanduser()
+        for value in os.getenv(name, "").split(os.pathsep)
+        if value.strip()
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     database_path: Path
@@ -34,6 +54,9 @@ class Settings:
     openai_api_key: str | None
     openai_model: str | None
     cors_origins: tuple[str, ...]
+    dev_local_repos: bool = False
+    local_repo_roots: tuple[Path, ...] = ()
+    lens_config_path: Path | None = None
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -57,4 +80,11 @@ class Settings:
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             openai_model=os.getenv("OPENAI_MODEL"),
             cors_origins=origins,
+            dev_local_repos=_boolean("ROADTRACE_DEV_LOCAL_REPOS"),
+            local_repo_roots=_paths("ROADTRACE_LOCAL_REPO_ROOTS"),
+            lens_config_path=(
+                Path(value).expanduser()
+                if (value := os.getenv("ROADTRACE_LENS_CONFIG", "").strip())
+                else None
+            ),
         )

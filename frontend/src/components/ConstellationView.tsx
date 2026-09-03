@@ -6,28 +6,32 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react'
-import { categoryOrder, type CanonicalCategory, type Capability, type GraphProjection } from '../types'
+import type { Capability, GraphProjection, LensLabel } from '../types'
 
 interface ConstellationViewProps {
-  activeCategory: CanonicalCategory | 'ALL'
+  activeCategory: LensLabel | 'ALL'
   capabilities: Capability[]
+  categoryOrder: string[]
   graph: GraphProjection
-  onCategoryChange: (category: CanonicalCategory | 'ALL') => void
+  onCategoryChange: (category: LensLabel | 'ALL') => void
   onSelectCapability: (capability: Capability) => void
   query: string
   repositoryName: string
 }
 
-const categoryColors: Record<CanonicalCategory, string> = {
-  'Product & UX': '#7c5cff',
-  'Core Capability': '#15b8c5',
-  Data: '#f59e0b',
-  'Platform & Integration': '#ec4899',
-  'Reliability & Safety': '#438cf5',
+const categoryColors: Record<string, string> = {
+  'Experience & Interaction': '#7c5cff',
+  'Domain Capability': '#15b8c5',
+  'Data & State': '#f59e0b',
+  'Knowledge & Intelligence': '#a36ef4',
+  'Automation & Agency': '#2bbbad',
+  'Interfaces & Ecosystem': '#ec4899',
+  'Trust & Governance': '#438cf5',
   'Quality & Evaluation': '#ef5350',
-  Operations: '#20b886',
-  'Developer & Documentation': '#7890ae',
+  'Operations & Scale': '#20b886',
+  'Distribution & Ecosystem': '#7890ae',
 }
+const fallbackColors = ['#7c5cff', '#15b8c5', '#f59e0b', '#a36ef4', '#2bbbad', '#ec4899', '#438cf5', '#ef5350', '#20b886', '#7890ae']
 
 const maturitySizes: Record<string, number> = {
   DISCOVERED: 18,
@@ -44,6 +48,7 @@ const MAX_SATELLITES_PER_CATEGORY = 8
 export function ConstellationView({
   activeCategory,
   capabilities,
+  categoryOrder,
   graph,
   onCategoryChange,
   onSelectCapability,
@@ -63,21 +68,21 @@ export function ConstellationView({
       .includes(normalizedQuery)
   })
   const { nodes, edges, hiddenCount } = useMemo(
-    () => buildConstellation(repositoryName, matchingCapabilities, activeCategory, Boolean(normalizedQuery)),
-    [activeCategory, matchingCapabilities, normalizedQuery, repositoryName],
+    () => buildConstellation(repositoryName, matchingCapabilities, categoryOrder, activeCategory, Boolean(normalizedQuery)),
+    [activeCategory, categoryOrder, matchingCapabilities, normalizedQuery, repositoryName],
   )
 
   return (
     <section className="constellation-card" aria-labelledby="constellation-heading">
       <div className="constellation-card__heading">
         <div>
-          <p className="eyebrow">Repository → category → capability</p>
+          <p className="eyebrow">Repository → lens → capability</p>
           <h2 id="constellation-heading">Capability constellation</h2>
           <p>Wheel to zoom, drag to pan, and select a capability to inspect its evidence.</p>
         </div>
         <div className="constellation-legend" aria-label="Constellation legend">
           <span><i className="legend-dot legend-dot--repository" /> Repository</span>
-          <span><i className="legend-dot legend-dot--category" /> Category</span>
+          <span><i className="legend-dot legend-dot--category" /> Lens</span>
           <span><i className="legend-dot legend-dot--capability" /> Capability size = maturity</span>
         </div>
       </div>
@@ -102,8 +107,8 @@ export function ConstellationView({
                   return
                 }
                 const nodeCategory = node.data.category
-                if (typeof nodeCategory === 'string' && categoryOrder.includes(nodeCategory as CanonicalCategory)) {
-                  onCategoryChange(activeCategory === nodeCategory ? 'ALL' : nodeCategory as CanonicalCategory)
+                if (typeof nodeCategory === 'string' && categoryOrder.includes(nodeCategory)) {
+                  onCategoryChange(activeCategory === nodeCategory ? 'ALL' : nodeCategory as LensLabel)
                 }
               }}
               proOptions={{ hideAttribution: true }}
@@ -115,14 +120,14 @@ export function ConstellationView({
           {hiddenCount > 0 && (
             <p className="constellation-note">
               {hiddenCount} additional {hiddenCount === 1 ? 'capability is' : 'capabilities are'} hidden to keep the overview legible.
-              Select a category or search to focus it.
+              Select a lens or search to focus it.
             </p>
           )}
         </>
       ) : (
         <div className="graph-empty">
           <span>⌕</span>
-          <p>No capability matches the current search and category.</p>
+          <p>No capability matches the current search and lens.</p>
         </div>
       )}
     </section>
@@ -132,7 +137,8 @@ export function ConstellationView({
 function buildConstellation(
   repositoryName: string,
   capabilities: Capability[],
-  activeCategory: CanonicalCategory | 'ALL',
+  categoryOrder: string[],
+  activeCategory: LensLabel | 'ALL',
   searching: boolean,
 ): { nodes: Node[]; edges: Edge[]; hiddenCount: number } {
   const center = { x: 610, y: 350 }
@@ -151,7 +157,7 @@ function buildConstellation(
   const edges: Edge[] = []
   let hiddenCount = 0
 
-  const grouped = new Map<CanonicalCategory, Capability[]>()
+  const grouped = new Map<LensLabel, Capability[]>()
   capabilities.forEach((capability) => {
     const current = grouped.get(capability.category) ?? []
     current.push(capability)
@@ -192,8 +198,8 @@ function buildConstellation(
       draggable: false,
       position: { x: categoryCenter.x - 42, y: categoryCenter.y - 42 },
       style: {
-        background: categoryColors[category],
-        borderColor: lighten(categoryColors[category]),
+        background: categoryColors[category] ?? fallbackColors[categoryIndex % fallbackColors.length],
+        borderColor: lighten(categoryColors[category] ?? fallbackColors[categoryIndex % fallbackColors.length]),
       },
     })
     edges.push({
@@ -201,7 +207,7 @@ function buildConstellation(
       source: ROOT_ID,
       target: categoryId,
       className: 'constellation-edge constellation-edge--trunk',
-      style: { stroke: categoryColors[category], strokeOpacity: 0.45, strokeWidth: 1.4 },
+      style: { stroke: categoryColors[category] ?? fallbackColors[categoryIndex % fallbackColors.length], strokeOpacity: 0.45, strokeWidth: 1.4 },
     })
 
     displayed.forEach((capability, index) => {
@@ -233,7 +239,7 @@ function buildConstellation(
           y: categoryCenter.y + Math.sin(satelliteAngle) * radius - size / 2,
         },
         style: {
-          '--satellite-color': categoryColors[category],
+          '--satellite-color': categoryColors[category] ?? fallbackColors[categoryIndex % fallbackColors.length],
           height: size,
           width: size,
         } as React.CSSProperties,
@@ -243,7 +249,7 @@ function buildConstellation(
         source: categoryId,
         target: capability.id,
         className: 'constellation-edge',
-        style: { stroke: categoryColors[category], strokeOpacity: 0.34, strokeWidth: 1 },
+        style: { stroke: categoryColors[category] ?? fallbackColors[categoryIndex % fallbackColors.length], strokeOpacity: 0.34, strokeWidth: 1 },
       })
     })
   })

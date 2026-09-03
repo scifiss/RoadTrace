@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type {
   AnalysisResult,
-  CanonicalCategory,
+  LensLabel,
   Capability,
   Commit,
   TimelineEvent,
@@ -14,7 +14,7 @@ import {
 } from './roadmapDates'
 
 interface ReverseRoadmapProps {
-  category: CanonicalCategory | 'ALL'
+  category: LensLabel | 'ALL'
   query: string
   result: AnalysisResult
   onSelectCapability: (capability: Capability) => void

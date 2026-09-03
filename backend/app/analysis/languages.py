@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -93,6 +94,76 @@ def build_entity(
         detail="Observed by static syntax analysis",
     )
     return entity, evidence
+
+
+_SEMANTIC_TEXT_NOISE = {
+    "button",
+    "click",
+    "close",
+    "container",
+    "div",
+    "false",
+    "label",
+    "none",
+    "null",
+    "span",
+    "submit",
+    "true",
+    "undefined",
+}
+
+
+def meaningful_semantic_text(value: str) -> str | None:
+    cleaned = re.sub(r"\s+", " ", value).strip(" \t\r\n'\"`{}[]();,")
+    if not 3 <= len(cleaned) <= 180 or not any(character.isalpha() for character in cleaned):
+        return None
+    lowered = cleaned.casefold()
+    if lowered in _SEMANTIC_TEXT_NOISE:
+        return None
+    if re.fullmatch(r"[#.\w-]+", cleaned) and (
+        cleaned.startswith(("#", ".")) or any(char.isdigit() for char in cleaned)
+    ):
+        return None
+    if cleaned.count("{") + cleaned.count("}") + cleaned.count(";") > 3:
+        return None
+    return cleaned
+
+
+def record_semantic_signal(
+    result: LanguageAnalysis,
+    entity: CodeEntity,
+    source_file: SourceFile,
+    *,
+    kind: str,
+    value: str,
+    line: int,
+    evidence_kind: EvidenceKind = EvidenceKind.SEMANTIC,
+) -> None:
+    cleaned = meaningful_semantic_text(value)
+    if cleaned is None:
+        return
+    signals = entity.metadata.setdefault("semantic_signals", [])
+    if not isinstance(signals, list):
+        signals = []
+        entity.metadata["semantic_signals"] = signals
+    signal = {"kind": kind, "value": cleaned}
+    if signal in signals:
+        return
+    signals.append(signal)
+    evidence_id = stable_id("evsignal", entity.id, kind, cleaned, line)
+    entity.evidence_ids.append(evidence_id)
+    result.evidence.append(
+        ObservedEvidence(
+            id=evidence_id,
+            kind=evidence_kind,
+            label=f"{kind.replace('_', ' ').title()}: {cleaned}",
+            file_path=source_file.path,
+            line_start=max(1, line),
+            line_end=max(1, line),
+            symbol=entity.qualified_name,
+            detail="Observed directly in executable source",
+        )
+    )
 
 
 def dotted_python_name(node: ast.AST) -> str | None:
@@ -199,6 +270,7 @@ class PythonAstAnalyzer(ast.NodeVisitor):
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         decorators = [name for item in node.decorator_list if (name := dotted_python_name(item))]
         route_methods: list[str] = []
+        route_paths: list[str] = []
         for decorator in node.decorator_list:
             target = decorator.func if isinstance(decorator, ast.Call) else decorator
             name = dotted_python_name(target)
@@ -212,6 +284,13 @@ class PythonAstAnalyzer(ast.NodeVisitor):
                 "websocket",
             }:
                 route_methods.append(name.rsplit(".", 1)[-1].upper())
+                if (
+                    isinstance(decorator, ast.Call)
+                    and decorator.args
+                    and isinstance(decorator.args[0], ast.Constant)
+                    and isinstance(decorator.args[0].value, str)
+                ):
+                    route_paths.append(decorator.args[0].value)
         if route_methods:
             entity_type = EntityType.API_ENDPOINT
         elif node.name.startswith("test_"):
@@ -229,8 +308,33 @@ class PythonAstAnalyzer(ast.NodeVisitor):
             node,
             node.name,
             entity_type,
-            {"decorators": decorators, "route_methods": route_methods, "entrypoint": entrypoint},
+            {
+                "decorators": decorators,
+                "route_methods": route_methods,
+                "route_paths": route_paths,
+                "entrypoint": entrypoint,
+            },
         )
+        if entity_type == EntityType.TEST:
+            record_semantic_signal(
+                self.result,
+                entity,
+                self.source_file,
+                kind="test_name",
+                value=node.name.replace("_", " "),
+                line=node.lineno,
+                evidence_kind=EvidenceKind.TEST,
+            )
+        for route_path in route_paths:
+            record_semantic_signal(
+                self.result,
+                entity,
+                self.source_file,
+                kind="api_route",
+                value=route_path,
+                line=node.lineno,
+                evidence_kind=EvidenceKind.API,
+            )
         if route_methods:
             self.result.relationships.append(
                 CodeRelationship(
@@ -267,8 +371,70 @@ class PythonAstAnalyzer(ast.NodeVisitor):
             )
         )
 
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if isinstance(node.target, ast.Name) and self.scope[-1].type == EntityType.SCHEMA:
+            fields = self.scope[-1].metadata.setdefault("fields", [])
+            if isinstance(fields, list) and node.target.id not in fields:
+                fields.append(node.target.id)
+            record_semantic_signal(
+                self.result,
+                self.scope[-1],
+                self.source_file,
+                kind="schema_field",
+                value=node.target.id.replace("_", " "),
+                line=node.lineno,
+                evidence_kind=EvidenceKind.SCHEMA,
+            )
+        self.generic_visit(node)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        for target in node.targets:
+            if not isinstance(target, ast.Name) or not target.id.isupper():
+                continue
+            values = _python_literal_strings(node.value)
+            if values:
+                record_semantic_signal(
+                    self.result,
+                    self.scope[-1],
+                    self.source_file,
+                    kind="constant",
+                    value=f"{target.id.replace('_', ' ')}: {', '.join(values[:8])}",
+                    line=node.lineno,
+                )
+        self.generic_visit(node)
+
     def visit_Call(self, node: ast.Call) -> None:
         target = dotted_python_name(node.func)
+        if target:
+            called = self.scope[-1].metadata.setdefault("called_symbols", [])
+            if isinstance(called, list) and target not in called:
+                called.append(target)
+            first_value = (
+                node.args[0].value
+                if node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+                else None
+            )
+            tail = target.rsplit(".", 1)[-1].casefold()
+            if first_value and tail in {"getenv", "get_environment_variable"}:
+                record_semantic_signal(
+                    self.result,
+                    self.scope[-1],
+                    self.source_file,
+                    kind="environment_variable",
+                    value=first_value,
+                    line=node.lineno,
+                )
+            elif first_value and tail.endswith(("error", "exception")):
+                record_semantic_signal(
+                    self.result,
+                    self.scope[-1],
+                    self.source_file,
+                    kind="error_message",
+                    value=first_value,
+                    line=node.lineno,
+                )
         if target and self.scope[-1].type not in {EntityType.MODULE}:
             relation_type = (
                 RelationshipType.INSTANTIATES
@@ -286,6 +452,18 @@ class PythonAstAnalyzer(ast.NodeVisitor):
                 )
             )
         self.generic_visit(node)
+
+
+def _python_literal_strings(node: ast.AST) -> list[str]:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return [node.value]
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        return [
+            item.value
+            for item in node.elts
+            if isinstance(item, ast.Constant) and isinstance(item.value, str)
+        ]
+    return []
 
 
 def load_default_analyzers() -> list[LanguageAnalyzer]:

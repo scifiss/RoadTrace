@@ -1,15 +1,44 @@
-export const categoryOrder = [
-  'Product & UX',
-  'Core Capability',
-  'Data',
-  'Platform & Integration',
-  'Reliability & Safety',
-  'Quality & Evaluation',
-  'Operations',
-  'Developer & Documentation',
-] as const
+export type LensLabel = string
 
-export type CanonicalCategory = (typeof categoryOrder)[number]
+export interface ConfidenceDimensions {
+  evidence: number
+  behavior: number
+  semantic: number
+  temporal: number
+}
+
+export interface CapabilityTrait {
+  id: string
+  label: string
+  evidence_ids: string[]
+  confidence: number
+}
+
+export interface KnowledgeQuality {
+  breadth: string | null
+  depth: string | null
+  executability: string | null
+  grounding: string | null
+  freshness: string | null
+  evidence_ids: string[]
+  confidence: number | null
+}
+
+export interface LensDefinition {
+  id: string
+  label: string
+  description: string
+  version: string
+  status: string
+  aliases: string[]
+  signals: string[]
+}
+
+export interface LensSet {
+  id: string
+  version: string
+  lenses: LensDefinition[]
+}
 
 export interface RepositorySummary {
   owner: string
@@ -35,6 +64,22 @@ export interface Evidence {
   commit_hash: string | null
   observed_at: string | null
   detail: string | null
+  source_kind: string | null
+  source_revision: string | null
+}
+
+export interface Observation {
+  id: string
+  kind: string
+  summary: string
+  evidence_ids: string[]
+  entity_ids: string[]
+  relationship_ids: string[]
+  inputs: string[]
+  outputs: string[]
+  terms: string[]
+  structural: boolean
+  confidence: number
 }
 
 export interface Entity {
@@ -65,9 +110,17 @@ export interface Capability {
   id: string
   name: string
   description: string
-  category: CanonicalCategory
+  primary_lens: string
+  secondary_lenses: string[]
+  category: LensLabel
   parent_id: string | null
   child_ids: string[]
+  behavior_ids: string[]
+  aliases: string[]
+  secondary_categories: LensLabel[]
+  observation_ids: string[]
+  traits: CapabilityTrait[]
+  knowledge_quality: KnowledgeQuality | null
   entity_ids: string[]
   evidence_ids: string[]
   commit_hashes: string[]
@@ -76,7 +129,32 @@ export interface Capability {
   maturity: string
   maturity_signals: MaturitySignals
   confidence: number
+  confidence_dimensions: ConfidenceDimensions
   reasoning_summary: string
+}
+
+export interface BehaviorSummary {
+  id: string
+  name: string
+  description: string
+  mechanism_types: string[]
+  primary_lens: string
+  secondary_lenses: string[]
+  primary_category: LensLabel
+  secondary_categories: LensLabel[]
+  parent_name: string | null
+  supporting_entity_ids: string[]
+  supporting_relationships: string[]
+  observation_ids: string[]
+  evidence_ids: string[]
+  observable_inputs: string[]
+  observable_outputs: string[]
+  ui_surfaces: string[]
+  api_paths: string[]
+  tests: string[]
+  semantic_terms: string[]
+  confidence: number
+  confidence_dimensions: ConfidenceDimensions
 }
 
 export interface Commit {
@@ -102,8 +180,20 @@ export interface TimelineEvent {
   evidence_ids: string[]
 }
 
+export interface CapabilityState {
+  id: string
+  capability_id: string
+  kind: string
+  timestamp: string
+  summary: string
+  evidence_ids: string[]
+  behavior_ids: string[]
+  confidence: number
+}
+
 export interface CategorySummary {
-  category: CanonicalCategory
+  lens_id: string | null
+  category: LensLabel
   capability_count: number
   evidence_count: number
 }
@@ -139,10 +229,14 @@ export interface AnalysisResult {
   evidence: Evidence[]
   entities: Entity[]
   relationships: unknown[]
+  observations: Observation[]
   commits: Commit[]
+  behaviors: BehaviorSummary[]
   capabilities: Capability[]
   timeline: TimelineEvent[]
+  capability_states: CapabilityState[]
   categories: CategorySummary[]
+  lens_set: LensSet | null
   capability_graph: GraphProjection
   code_graph: GraphProjection
   workflow_graph: GraphProjection

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from app.analysis.history import GitHistoryAnalyzer
 from app.analysis.modeling import _balanced_code_entities, maturity_state
-from app.domain import CanonicalCategory, CodeEntity, EntityType, MaturitySignals, MaturityState
+from app.domain import CodeEntity, EntityType, MaturitySignals, MaturityState
 from app.ingestion.repository import GitHubRepository, GitRunner
 from app.main import create_app
 from app.service import AnalysisService
@@ -105,12 +106,30 @@ def test_end_to_end_fixture_builds_evidence_backed_reverse_roadmap(
     synthetic_repository: Path, settings
 ) -> None:
     result = AnalysisService(settings).analyze_path(synthetic_repository, identity())
-    categories = {capability.category for capability in result.capabilities}
-    assert CanonicalCategory.CORE in categories
-    assert CanonicalCategory.DATA in categories
-    assert CanonicalCategory.PLATFORM in categories
-    assert CanonicalCategory.QUALITY in categories
-    assert CanonicalCategory.OPERATIONS in categories
+    categories = {
+        category
+        for capability in result.capabilities
+        for category in (capability.category, *capability.secondary_categories)
+    }
+    assert "Domain Capability" in categories
+    assert "Data & State" in categories
+    assert "Operations & Scale" in categories
+    names = {capability.name for capability in result.capabilities}
+    assert "Route Persistence" in names
+    assert any("Path" in name and "Computation" in name for name in names)
+    assert "Authentication" not in names
+    assert not names.intersection(
+        {"API Surface", "Json Engine", "User Interface", "React Component"}
+    )
+    assert result.behaviors
+    assert result.observations
+    assert result.capability_states
+    assert result.lens_set and result.lens_set.version == "2.0"
+    assert all(capability.behavior_ids for capability in result.capabilities)
+    assert all(
+        set(capability.behavior_ids).issubset({item.id for item in result.behaviors})
+        for capability in result.capabilities
+    )
     assert all(capability.evidence_ids for capability in result.capabilities)
     assert all(0 <= capability.confidence <= 1 for capability in result.capabilities)
     assert result.timeline
@@ -194,3 +213,64 @@ def test_api_analysis_workflow_persists_and_returns_result(
             assert health == {"status": "ok"}
 
     asyncio.run(exercise_api())
+
+
+def test_development_local_input_uses_the_standard_analysis_pipeline(
+    synthetic_repository: Path, settings
+) -> None:
+    enabled = replace(
+        settings,
+        dev_local_repos=True,
+        local_repo_roots=(synthetic_repository.parent,),
+    )
+    result = AnalysisService(enabled).analyze_input(str(synthetic_repository))
+    assert result.repository.owner == "local"
+    assert result.repository.url.startswith("local://")
+    names = {item.name for item in result.capabilities}
+    assert "Route Persistence" in names
+    assert any("Path" in name and "Computation" in name for name in names)
+
+
+def test_product_semantic_fixture_clusters_workflows_and_controls_granularity(
+    product_semantic_repository: Path, settings
+) -> None:
+    result = AnalysisService(settings).analyze_path(
+        product_semantic_repository,
+        GitHubRepository(
+            owner="roadtrace-fixtures",
+            name="compound-workflow",
+            url="https://github.com/roadtrace-fixtures/compound-workflow",
+        ),
+    )
+    by_name = {item.name: item for item in result.capabilities}
+    behavior_by_id = {item.id: item for item in result.behaviors}
+
+    def with_role(role: str):
+        return [
+            capability
+            for capability in result.capabilities
+            if any(
+                role in behavior_by_id[behavior_id].mechanism_types
+                for behavior_id in capability.behavior_ids
+            )
+        ]
+
+    management = with_role("MANAGEMENT")
+    search = with_role("SEARCH_FILTER")
+    persistence = with_role("PERSISTENCE")
+    scoring = with_role("SCORING")
+    assert management and search and persistence and scoring
+    assert any(item.parent_id == management[0].id for item in [*search, *persistence])
+    assert len([item for item in result.capabilities if item.name == management[0].name]) == 1
+    assert "Payroll Management" not in by_name
+    assert not {
+        "API Surface",
+        "Json Engine",
+        "User Interface",
+        "React Component",
+        "Helper Utilities",
+    }.intersection(by_name)
+    assert all(item.evidence_ids and item.behavior_ids for item in result.capabilities)
+    assert all(item.observation_ids for item in result.capabilities)
+    evidence_ids = {item.id for item in result.evidence}
+    assert all(set(item.evidence_ids).intersection(evidence_ids) for item in result.capabilities)

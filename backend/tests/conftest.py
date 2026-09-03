@@ -172,7 +172,109 @@ export function RouteMap() {
         "Dockerfile",
         'FROM python:3.12-slim\nCMD ["python", "-m", "roadnet.cli"]\n',
     )
-    _write(repository, "README.md", "# RoadNet\n\nA small route analysis service.\n")
+    _write(
+        repository,
+        "README.md",
+        "# RoadNet\n\nA small route analysis service.\n\nFuture idea: user authentication.\n",
+    )
     commit(5, "add UI CI deployment and docs")
     _git(repository, "tag", "v0.1.0")
     yield repository
+
+
+@pytest.fixture
+def product_semantic_repository(tmp_path: Path) -> Path:
+    repository = tmp_path / "product-semantic-repository"
+    repository.mkdir()
+    _git(repository, "init", "-b", "main")
+    _git(repository, "config", "user.email", "fixture@roadtrace.test")
+    _git(repository, "config", "user.name", "RoadTrace Fixture")
+    _write(
+        repository,
+        "src/applicationStore.js",
+        """export function loadApplications() {
+  return JSON.parse(localStorage.getItem('tracked-applications') || '[]');
+}
+export function filterApplications(applications, stageFilter, searchQuery) {
+  return applications.filter(
+    (role) => role.stage === stageFilter && role.company.includes(searchQuery)
+  );
+}
+export function updateApplicationStage(application, stage) {
+  return { ...application, stage };
+}
+export function saveRoleNotes(application, notes, referral) {
+  const records = [{ ...application, notes, referral }];
+  localStorage.setItem('tracked-applications', JSON.stringify(records));
+}
+""",
+    )
+    _write(
+        repository,
+        "src/skillFit.js",
+        """export function normalizeSkill(skill) { return skill.toLowerCase().trim(); }
+export function matchRequirements(candidateSkills, requiredSkills, skillAliases) {
+  return requiredSkills.filter((required) => candidateSkills.some(
+    (skill) => normalizeSkill(skill) === normalizeSkill(required)
+  ));
+}
+export function calculateWeightedFitScore(candidateSkills, requiredSkills, preferredSkills) {
+  const requiredMatches = matchRequirements(candidateSkills, requiredSkills, {});
+  const preferredMatches = matchRequirements(candidateSkills, preferredSkills, {});
+  return requiredMatches.length * 2 + preferredMatches.length;
+}
+export function explainRequirementFit(candidateSkills, requirements) {
+  return requirements.map((requirement) => ({
+    requirement,
+    matched: candidateSkills.includes(requirement),
+  }));
+}
+""",
+    )
+    _write(
+        repository,
+        "src/App.jsx",
+        """import {
+  loadApplications,
+  filterApplications,
+  updateApplicationStage,
+  saveRoleNotes,
+} from './applicationStore';
+import { calculateWeightedFitScore, explainRequirementFit } from './skillFit';
+export function ApplicationTracker() {
+  const applications = loadApplications();
+  const filteredRoles = filterApplications(applications, 'interview', 'research');
+  const selectedRole = updateApplicationStage(filteredRoles[0], 'interview');
+  saveRoleNotes(selectedRole, 'Prepare system-design examples', 'Employee referral');
+  const fitScore = calculateWeightedFitScore(
+    ['Python'], selectedRole.requiredSkills, selectedRole.preferredSkills
+  );
+  const explanation = explainRequirementFit(['Python'], selectedRole.requiredSkills);
+  return <main>
+    <h1>Application tracking</h1>
+    <label>Search applications</label>
+    <label>Stage filter</label>
+    <section>Role details and notes</section>
+    <section>Skill fit score and requirement explanation</section>
+  </main>;
+}
+""",
+    )
+    _write(
+        repository,
+        "tests/skillFit.test.js",
+        """import { calculateWeightedFitScore, explainRequirementFit } from '../src/skillFit';
+describe('weighted candidate skill fit', () => {
+  it('scores required skills above preferred skills', () => calculateWeightedFitScore([], [], []));
+  it('explains each missing requirement', () => explainRequirementFit([], []));
+});
+""",
+    )
+    _write(
+        repository,
+        "README.md",
+        "# Fixture\n\nImplemented application tracking. Future idea: payroll management.\n",
+    )
+    _git(repository, "add", ".")
+    _git(repository, "commit", "-m", "implement application tracking and skill fit")
+    return repository

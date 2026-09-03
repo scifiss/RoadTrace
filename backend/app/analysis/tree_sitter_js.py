@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,8 +13,9 @@ from app.analysis.languages import (
     LanguageAnalysis,
     PendingRelationship,
     build_entity,
+    record_semantic_signal,
 )
-from app.domain import CodeEntity, CodeRelationship, EntityType, RelationshipType
+from app.domain import CodeEntity, CodeRelationship, EntityType, EvidenceKind, RelationshipType
 from app.ingestion.repository import SourceFile
 
 
@@ -115,6 +117,15 @@ class JavaScriptTypeScriptAnalyzer:
             )
             result.entities.append(endpoint)
             result.evidence.append(endpoint_evidence)
+            record_semantic_signal(
+                result,
+                endpoint,
+                source_file,
+                kind="api_route",
+                value=f"{method} {route}",
+                line=node.start_point.row + 1,
+                evidence_kind=EvidenceKind.API,
+            )
             route_definitions.append(_Definition(node, endpoint))
             result.relationships.extend(
                 [
@@ -136,6 +147,49 @@ class JavaScriptTypeScriptAnalyzer:
             )
         definitions.extend(route_definitions)
 
+        test_definitions: list[_Definition] = []
+        for node in _walk(tree.root_node):
+            if node.type != "call_expression":
+                continue
+            function = node.child_by_field_name("function")
+            arguments = node.child_by_field_name("arguments")
+            function_name = _text(function, source).rsplit(".", 1)[-1]
+            label = _first_string(arguments, source) if arguments is not None else None
+            if function_name not in {"describe", "it", "test", "spec"} or not label:
+                continue
+            parent = _nearest_owner(node, definitions)
+            test, test_evidence = build_entity(
+                entity_type=EntityType.TEST,
+                name=label,
+                qualified_name=f"{module.qualified_name}.test:{label}:{node.start_point.row + 1}",
+                source_file=source_file,
+                line_start=node.start_point.row + 1,
+                line_end=node.end_point.row + 1,
+                metadata={"test_label": label},
+            )
+            result.entities.append(test)
+            result.evidence.append(test_evidence)
+            record_semantic_signal(
+                result,
+                test,
+                source_file,
+                kind="test_name",
+                value=label,
+                line=node.start_point.row + 1,
+                evidence_kind=EvidenceKind.TEST,
+            )
+            result.relationships.append(
+                CodeRelationship(
+                    source_id=parent.id,
+                    target_id=test.id,
+                    type=RelationshipType.CONTAINS,
+                    confidence=1,
+                    evidence_ids=test.evidence_ids,
+                )
+            )
+            test_definitions.append(_Definition(node, test))
+        definitions.extend(test_definitions)
+
         for node in _walk(tree.root_node):
             owner = _nearest_owner(node, definitions)
             if node.type == "import_statement":
@@ -155,6 +209,9 @@ class JavaScriptTypeScriptAnalyzer:
                 if function is None:
                     continue
                 name = _text(function, source)
+                called = owner.metadata.setdefault("called_symbols", [])
+                if isinstance(called, list) and name not in called:
+                    called.append(name)
                 if name == "require":
                     arguments = node.child_by_field_name("arguments")
                     target = _first_string(arguments, source) if arguments is not None else None
@@ -183,7 +240,122 @@ class JavaScriptTypeScriptAnalyzer:
                             inferred=True,
                         )
                     )
+        self._record_semantic_signals(tree.root_node, source, source_file, definitions, result)
         return result
+
+    def _record_semantic_signals(
+        self,
+        root: Node,
+        source: bytes,
+        source_file: SourceFile,
+        definitions: list[_Definition],
+        result: LanguageAnalysis,
+    ) -> None:
+        visible_attributes = {"aria-label", "label", "placeholder", "title"}
+        data_operations = {
+            "delete",
+            "find",
+            "findone",
+            "insert",
+            "query",
+            "readfile",
+            "save",
+            "update",
+            "writefile",
+        }
+        for node in _walk(root):
+            owner = _nearest_owner(node, definitions)
+            line = node.start_point.row + 1
+            if node.type == "jsx_text":
+                record_semantic_signal(
+                    result,
+                    owner,
+                    source_file,
+                    kind="ui_text",
+                    value=_text(node, source),
+                    line=line,
+                    evidence_kind=EvidenceKind.UI,
+                )
+                continue
+            if node.type == "jsx_attribute":
+                name_node = node.child_by_field_name("name")
+                value_node = node.child_by_field_name("value")
+                name = _text(name_node, source)
+                if name in visible_attributes and value_node is not None:
+                    record_semantic_signal(
+                        result,
+                        owner,
+                        source_file,
+                        kind="form_label" if name in {"label", "placeholder"} else "ui_text",
+                        value=_text(value_node, source).strip("'\"{}"),
+                        line=line,
+                        evidence_kind=EvidenceKind.UI,
+                    )
+                continue
+            if node.type == "variable_declarator":
+                name_node = node.child_by_field_name("name")
+                value_node = node.child_by_field_name("value")
+                name = _text(name_node, source)
+                if name.isupper() and value_node is not None:
+                    values = _string_literals(value_node, source)[:8]
+                    if values:
+                        record_semantic_signal(
+                            result,
+                            owner,
+                            source_file,
+                            kind="constant",
+                            value=f"{name.replace('_', ' ')}: {', '.join(values)}",
+                            line=line,
+                        )
+                continue
+            if node.type == "member_expression":
+                value = _text(node, source)
+                match = re.search(r"(?:process|import\.meta)\.env\.([A-Z][A-Z0-9_]*)", value)
+                if match:
+                    record_semantic_signal(
+                        result,
+                        owner,
+                        source_file,
+                        kind="environment_variable",
+                        value=match.group(1),
+                        line=line,
+                    )
+                continue
+            if node.type != "call_expression":
+                continue
+            function = node.child_by_field_name("function")
+            arguments = node.child_by_field_name("arguments")
+            function_name = _text(function, source)
+            first_argument = _first_argument_text(arguments, source)
+            lowered = function_name.casefold()
+            if "localstorage." in lowered or "indexeddb." in lowered:
+                record_semantic_signal(
+                    result,
+                    owner,
+                    source_file,
+                    kind="browser_storage",
+                    value=f"{function_name}: {first_argument or 'stored application data'}",
+                    line=line,
+                )
+            tail = lowered.rsplit(".", 1)[-1]
+            if tail in data_operations:
+                record_semantic_signal(
+                    result,
+                    owner,
+                    source_file,
+                    kind="data_operation",
+                    value=function_name,
+                    line=line,
+                )
+            if tail in {"error", "typeerror", "rangeerror", "alert"} and first_argument:
+                record_semantic_signal(
+                    result,
+                    owner,
+                    source_file,
+                    kind="error_message",
+                    value=first_argument,
+                    line=line,
+                )
 
     def _definition(
         self,
@@ -275,3 +447,23 @@ def _first_string(node: Node, source: bytes) -> str | None:
         if child.type in {"string", "string_fragment"}:
             return _text(child, source).strip("'\"")
     return None
+
+
+def _first_argument_text(node: Node | None, source: bytes) -> str | None:
+    if node is None or not node.named_children:
+        return None
+    return _text(node.named_children[0], source).strip("'\"`{}")
+
+
+def _string_literals(node: Node, source: bytes) -> list[str]:
+    values: list[str] = []
+    nodes = [node]
+    while nodes and len(values) < 12:
+        current = nodes.pop()
+        if current.type in {"string", "string_fragment", "template_string"}:
+            value = _text(current, source).strip("'\"`")
+            if value and value not in values:
+                values.append(value)
+            continue
+        nodes.extend(reversed(current.named_children))
+    return values

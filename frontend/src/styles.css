@@ -1126,6 +1126,32 @@ select:focus-visible {
 .evidence-kind--ui { background: #e9e2f2; color: #685087; }
 .evidence-kind--commit { background: #e1e8f0; color: #3c6286; }
 .evidence-kind--test { background: #edf0d9; color: #667024; }
+.evidence-kind--semantic { background: #dff2f5; color: #236d79; }
+
+.inference-chain {
+  border: 1px solid var(--line);
+  padding: 0.9rem;
+}
+
+.inference-chain h3 {
+  margin: 0 0 0.7rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.inference-chain div + div {
+  border-top: 1px solid var(--line);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.inference-chain p,
+.inference-chain span,
+.inference-chain small {
+  display: block;
+  margin: 0.25rem 0 0;
+}
 
 .evidence-row strong,
 .evidence-row code,

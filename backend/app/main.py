@@ -25,7 +25,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="RoadTrace API",
         version="0.1.0",
-        description="Evidence-backed reverse roadmaps for public GitHub repositories",
+        description="Evidence-backed reverse roadmaps from statically analyzed repositories",
         lifespan=lifespan,
     )
     app.add_middleware(

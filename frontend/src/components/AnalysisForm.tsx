@@ -7,6 +7,7 @@ interface AnalysisFormProps {
 }
 
 const githubPattern = /^https:\/\/github\.com\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*(?:\.git)?\/?$/
+const localReposEnabled = import.meta.env.VITE_ENABLE_LOCAL_REPOS === 'true'
 
 export function AnalysisForm({ onAnalyze, loading, compact = false }: AnalysisFormProps) {
   const inputId = useId()
@@ -16,8 +17,13 @@ export function AnalysisForm({ onAnalyze, loading, compact = false }: AnalysisFo
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const value = url.trim()
-    if (!githubPattern.test(value)) {
-      setValidation('Use a public URL in the form https://github.com/owner/repository')
+    const isAllowedLocalPath = localReposEnabled && value.startsWith('/')
+    if (!githubPattern.test(value) && !isAllowedLocalPath) {
+      setValidation(
+        localReposEnabled
+          ? 'Use a public GitHub URL or an allowed absolute local repository path'
+          : 'Use a public URL in the form https://github.com/owner/repository',
+      )
       return
     }
     setValidation(null)
@@ -27,7 +33,7 @@ export function AnalysisForm({ onAnalyze, loading, compact = false }: AnalysisFo
   return (
     <form className={`analysis-form ${compact ? 'analysis-form--compact' : ''}`} onSubmit={submit}>
       <label className="sr-only" htmlFor={inputId}>
-        Public GitHub repository URL
+        {localReposEnabled ? 'GitHub URL or allowed local repository path' : 'Public GitHub repository URL'}
       </label>
       <div className="url-control">
         <span aria-hidden="true" className="url-control__mark">
@@ -35,12 +41,16 @@ export function AnalysisForm({ onAnalyze, loading, compact = false }: AnalysisFo
         </span>
         <input
           id={inputId}
-          type="url"
+          type={localReposEnabled ? 'text' : 'url'}
           value={url}
           disabled={loading}
           onChange={(event) => setUrl(event.target.value)}
-          placeholder="https://github.com/owner/repository"
-          autoComplete="url"
+          placeholder={
+            localReposEnabled
+              ? 'https://github.com/owner/repository or /absolute/local/path'
+              : 'https://github.com/owner/repository'
+          }
+          autoComplete={localReposEnabled ? 'off' : 'url'}
           spellCheck={false}
           aria-describedby={validation ? `${inputId}-error` : undefined}
           aria-invalid={Boolean(validation)}

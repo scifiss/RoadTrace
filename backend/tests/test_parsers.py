@@ -3,7 +3,7 @@ from pathlib import Path
 from app.analysis.languages import PythonAstAnalyzer
 from app.analysis.modeling import merge_and_resolve
 from app.analysis.tree_sitter_js import JavaScriptTypeScriptAnalyzer
-from app.domain import EntityType, RelationshipType
+from app.domain import EntityType, EvidenceKind, RelationshipType
 from app.ingestion.repository import SourceFile
 
 
@@ -22,10 +22,14 @@ def test_python_ast_extracts_entities_routes_schemas_and_calls() -> None:
         source(
             "app/api.py",
             "Python",
-            """from pydantic import BaseModel
+            """import os
+from pydantic import BaseModel
 class InputModel(BaseModel):
     value: str
 def calculate(value):
+    if not value:
+        raise ValueError('A calculation value is required')
+    model = os.getenv('CALCULATION_MODEL')
     return len(value)
 @router.post('/calculate')
 def endpoint(payload: InputModel):
@@ -37,6 +41,13 @@ def endpoint(payload: InputModel):
     assert EntityType.SCHEMA in types
     assert EntityType.API_ENDPOINT in types
     assert any(item.target_name == "calculate" for item in analysis.pending_relationships)
+    schema = next(item for item in analysis.entities if item.type == EntityType.SCHEMA)
+    endpoint = next(item for item in analysis.entities if item.type == EntityType.API_ENDPOINT)
+    assert schema.metadata["fields"] == ["value"]
+    assert endpoint.metadata["route_paths"] == ["/calculate"]
+    labels = {item.label for item in analysis.evidence}
+    assert "Environment Variable: CALCULATION_MODEL" in labels
+    assert "Error Message: A calculation value is required" in labels
 
 
 def test_typescript_tree_sitter_extracts_components_imports_and_calls() -> None:
@@ -46,8 +57,9 @@ def test_typescript_tree_sitter_extracts_components_imports_and_calls() -> None:
             "TypeScript",
             """import React from 'react';
 export function Dashboard() {
+  const savedRoads = localStorage.getItem('road-plans');
   const handleClick = () => loadRoads();
-  return <button onClick={handleClick}>Load</button>;
+  return <section><h1>Route planner</h1><button onClick={handleClick}>Load roads</button></section>;
 }
 function loadRoads() { return []; }
 """,
@@ -56,6 +68,10 @@ function loadRoads() { return []; }
     assert any(entity.type == EntityType.UI_COMPONENT for entity in analysis.entities)
     assert any(item.type == RelationshipType.IMPORTS for item in analysis.pending_relationships)
     assert any(item.target_name == "loadRoads" for item in analysis.pending_relationships)
+    evidence_labels = {item.label for item in analysis.evidence}
+    assert "Browser Storage: localStorage.getItem: road-plans" in evidence_labels
+    assert "Ui Text: Route planner" in evidence_labels
+    assert "Ui Text: Load roads" in evidence_labels
 
 
 def test_javascript_tree_sitter_extracts_api_routes() -> None:
@@ -70,6 +86,23 @@ def test_javascript_tree_sitter_extracts_api_routes() -> None:
         entity.type == EntityType.API_ENDPOINT and entity.name == "POST /roads"
         for entity in analysis.entities
     )
+
+
+def test_javascript_tests_become_behavioral_evidence() -> None:
+    analysis = JavaScriptTypeScriptAnalyzer().analyze(
+        source(
+            "tests/fit.test.ts",
+            "TypeScript",
+            "describe('weighted skill fit', () => { "
+            "it('explains missing requirements', () => {}); });",
+        )
+    )
+    tests = [item for item in analysis.entities if item.type == EntityType.TEST]
+    assert {item.name for item in tests} == {
+        "weighted skill fit",
+        "explains missing requirements",
+    }
+    assert any(item.kind == EvidenceKind.TEST for item in analysis.evidence)
 
 
 def test_import_and_call_graph_resolves_internal_symbols() -> None:

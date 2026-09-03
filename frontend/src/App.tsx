@@ -19,6 +19,7 @@ const phases = [
   'Tracing relationships and entry points',
   'Reconstructing capability history',
 ]
+const localReposEnabled = import.meta.env.VITE_ENABLE_LOCAL_REPOS === 'true'
 
 function App() {
   const [result, setResult] = useState<AnalysisResult | null>(null)
@@ -71,8 +72,11 @@ function App() {
               to <em>living roadmap.</em>
             </h1>
             <p className="hero__copy">
-              Paste a public GitHub repository. RoadTrace reads the source, traces its evolution,
-              and shows what was actually built—with the evidence attached.
+              {localReposEnabled
+                ? 'Enter a public GitHub repository or an allowed local Git worktree. '
+                : 'Paste a public GitHub repository. '}
+              RoadTrace reads the source, traces its evolution, and shows what was actually
+              built—with the evidence attached.
             </p>
             <AnalysisForm loading={loading} onAnalyze={analyze} />
             {error && (
@@ -85,7 +89,7 @@ function App() {
             {!loading && (
               <div className="trust-line">
                 <span>Read-only analysis</span>
-                <span>Public repositories only</span>
+                <span>{localReposEnabled ? 'Explicit local roots only' : 'Public repositories only'}</span>
                 <span>No code execution</span>
               </div>
             )}
@@ -163,6 +167,7 @@ function App() {
               <ConstellationView
                 activeCategory={category}
                 capabilities={result.capabilities}
+                categoryOrder={result.categories.map((item) => item.category)}
                 graph={result.capability_graph}
                 onCategoryChange={setCategory}
                 onSelectCapability={setSelected}

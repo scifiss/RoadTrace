@@ -31,11 +31,21 @@ export function EvidencePanel({ capability, result, onClose }: EvidencePanelProp
     const selected = new Set(capability.evidence_ids)
     const items = result.evidence.filter((item) => selected.has(item.id))
     return {
-      code: items.filter((item) => !['COMMIT', 'TEST', 'DOCUMENTATION'].includes(item.kind)),
+      code: items.filter((item) => !['COMMIT', 'TEST', 'DOCUMENTATION', 'DOCUMENT_CLAIM'].includes(item.kind)),
       history: items.filter((item) => item.kind === 'COMMIT'),
-      quality: items.filter((item) => ['TEST', 'DOCUMENTATION'].includes(item.kind)),
+      quality: items.filter((item) => ['TEST', 'DOCUMENTATION', 'DOCUMENT_CLAIM'].includes(item.kind)),
     }
   }, [capability, result.evidence])
+  const behaviors = useMemo(() => {
+    if (!capability) return []
+    const selected = new Set(capability.behavior_ids)
+    return result.behaviors.filter((item) => selected.has(item.id))
+  }, [capability, result.behaviors])
+  const observations = useMemo(() => {
+    if (!capability) return []
+    const selected = new Set(capability.observation_ids)
+    return result.observations.filter((item) => selected.has(item.id))
+  }, [capability, result.observations])
 
   if (!capability) return null
   const signalEntries = Object.entries(capability.maturity_signals)
@@ -55,6 +65,42 @@ export function EvidencePanel({ capability, result, onClose }: EvidencePanelProp
         <span>Inference</span>
         <p>{capability.reasoning_summary}</p>
       </div>
+      {behaviors.length > 0 && (
+        <section className="inference-chain" aria-label="Capability inference chain">
+          <h3>Evidence → observation → behavior → capability</h3>
+          {behaviors.map((behavior) => (
+            <div key={behavior.id}>
+              <strong>{behavior.name}</strong>
+              <p>{behavior.description}</p>
+              <span>
+                {behavior.supporting_entity_ids.length} code entities ·{' '}
+                {behavior.supporting_relationships.length} relationships ·{' '}
+                {behavior.observation_ids.length} observations
+                {behavior.tests.length > 0 ? ` · ${behavior.tests.length} tests` : ''}
+              </span>
+              {(behavior.ui_surfaces.length > 0 || behavior.api_paths.length > 0) && (
+                <small>
+                  {[...behavior.ui_surfaces.slice(0, 3), ...behavior.api_paths.slice(0, 3)].join(
+                    ' · ',
+                  )}
+                </small>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
+      {observations.length > 0 && (
+        <section className="inference-chain" aria-label="Normalized observations">
+          <h3>Grounded observations</h3>
+          {observations.slice(0, 8).map((observation) => (
+            <div key={observation.id}>
+              <strong>{observation.kind.replaceAll('_', ' ')}</strong>
+              <p>{observation.summary}</p>
+              <span>{observation.evidence_ids.length} evidence reference{observation.evidence_ids.length === 1 ? '' : 's'}</span>
+            </div>
+          ))}
+        </section>
+      )}
       <div className="evidence-metrics">
         <div>
           <span>Maturity</span>
@@ -64,6 +110,13 @@ export function EvidencePanel({ capability, result, onClose }: EvidencePanelProp
           <span>Confidence</span>
           <strong>{capability.confidence.toFixed(2)}</strong>
         </div>
+      </div>
+      <div className="signal-list" aria-label="Inference confidence dimensions">
+        {Object.entries(capability.confidence_dimensions).map(([name, confidence]) => (
+          <span className="signal signal--present" key={name}>
+            {name} {confidence.toFixed(2)}
+          </span>
+        ))}
       </div>
       <div className="signal-list" aria-label="Maturity evidence dimensions">
         {signalEntries.map(([name, present]) => (

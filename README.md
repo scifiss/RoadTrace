@@ -8,7 +8,7 @@ Executable source structure is treated as the strongest evidence; tests, history
 configuration, and documentation support the interpretation.
 
 V0.1 is a complete local vertical slice: paste a public GitHub URL, analyze it,
-inspect the eight-category reverse roadmap, explore bounded code/capability graphs,
+inspect the versioned-lens reverse roadmap, explore bounded code/capability graphs,
 and open any inferred capability to see the evidence behind it.
 
 ## What works
@@ -22,14 +22,17 @@ and open any inferred capability to see the evidence behind it.
   projections.
 - Bounded Git history sampled across the reachable project span, changed paths,
   tags, change-type heuristics, and first/last capability estimates.
-- Grounded capabilities under RoadTrace's eight canonical categories.
+- Source-independent observations, relationship-backed mechanism clusters, and
+  open-world semantic capability synthesis.
+- Grounded capability hierarchy, traits, and primary/secondary projections under a
+  configurable, versioned default set of ten analysis lenses.
 - Explicit `DISCOVERED` → `PRODUCTIONIZED` maturity states backed by named evidence
   dimensions—never an invented completion percentage.
 - Optional evidence-bounded semantic label refinement through the official OpenAI
   Python SDK and Responses API. Analysis remains fully functional without a key.
 - SQLite result persistence and a small REST API.
 - Responsive React workspace with honest summary metrics, a searchable capability
-  constellation, a compact eight-category overview, reverse-roadmap filters, focused
+  constellation, a compact lens overview, reverse-roadmap filters, focused
   one/two-hop graph exploration, and an evidence drill-down panel. Full bounded graph
   projections remain available as an explicit opt-in.
 
@@ -72,6 +75,26 @@ repository**. Vite proxies `/api` to `http://localhost:8000` in development.
 
 The backend API documentation is available at `http://localhost:8000/docs`.
 
+### Optional development-only local repositories
+
+Private GitHub authentication remains out of scope, but local development can analyze
+an existing private worktree through the same static/Git/capability pipeline. Enable
+both server access and the optional form input before starting RoadTrace:
+
+```bash
+export ROADTRACE_DEV_LOCAL_REPOS=true
+export ROADTRACE_LOCAL_REPO_ROOTS=/home/rebecca/projects/geoworld-ss
+export VITE_ENABLE_LOCAL_REPOS=true
+./scripts/dev.sh
+```
+
+Then enter the absolute Git top-level path, for example
+`/home/rebecca/projects/geoworld-ss/geoworld`. Multiple allowed roots use the platform path
+separator (`:` on Linux). RoadTrace resolves the requested path and roots, rejects
+symlink/path traversal outside them, requires the exact Git top-level directory, and
+never executes repository code. The feature is disabled and absent from the form by
+default; production must opt in explicitly to both controls.
+
 ### Optional semantic refinement
 
 Deterministic mode is the default. To enable semantic refinement, export both:
@@ -82,10 +105,19 @@ export OPENAI_MODEL='your-responses-compatible-model'
 ```
 
 The model name is never hard-coded. RoadTrace sends a bounded digest of existing
-candidate capabilities, entities, and allowed evidence IDs—not whole repository
-contents. Pydantic validates the structured response, and updates with unknown
-capability/evidence IDs are discarded. Any SDK/API failure falls back to the
-deterministic result and adds a visible warning.
+candidate capabilities, behavior summaries, normalized observations, entities, and
+allowed evidence IDs—not whole repository contents. Pydantic validates the structured
+response, and updates with unknown candidate, behavior, evidence, or lens IDs are
+discarded. Any SDK/API failure falls back to the deterministic result and adds a
+visible warning.
+
+### Optional lens projection
+
+The default lens set is versioned with every analysis result. To replace or extend
+the projection without changing inference code, point `ROADTRACE_LENS_CONFIG` at a
+validated JSON `LensSet`. Lenses have stable IDs, labels, descriptions, versions, and
+`ACTIVE` or `DEPRECATED` status. A lens organizes discovered capabilities; it is not a
+dictionary of allowed product concepts.
 
 ## Tests and checks
 
@@ -106,11 +138,15 @@ npm run lint
 npm run build
 ```
 
-The backend suite creates a temporary six-commit synthetic repository containing a
-CLI, route algorithm, schemas/persistence, API and validation, tests, React UI,
-CI, container configuration, documentation, and a tag. RoadTrace analyzes its
-source and Git history but never executes the fixture. This makes the representative
-end-to-end reverse roadmap reproducible without network access.
+The backend suite creates temporary repositories and never executes them. It includes
+a six-commit end-to-end history plus six unseen domains, an identifier-obfuscation
+pair, a structure-versus-lexicon ablation, misleading-documentation cases, a custom
+versioned lens set, and provenance/confidence invariants. This makes the reasoning
+regression reproducible without network access.
+
+See [the reasoning architecture](docs/REASONING_ARCHITECTURE.md),
+[the pre-change audit](docs/REASONING_ARCHITECTURE_AUDIT.md), and
+[the JobTracker validation](docs/JOBTRACKER_VALIDATION.md).
 
 ## REST API
 
@@ -147,7 +183,7 @@ against the implementation brief is tracked in [the milestone checklist](docs/V0
 
 ## Security boundary
 
-- Only exact public GitHub HTTPS repository URLs are accepted. Credentials, ports,
+- By default only exact public GitHub HTTPS repository URLs are accepted. Credentials, ports,
   alternate hosts, SSH/file URLs, local paths, query strings, fragments, encoded
   paths, and additional URL segments are rejected.
 - Git is invoked with argument arrays and `shell=False`. Global/system Git config,
@@ -157,6 +193,9 @@ against the implementation brief is tracked in [the milestone checklist](docs/V0
 - File walking does not follow symlinks and ignores VCS data, dependencies, virtual
   environments, vendor/build output, generated bundles, binaries, and lockfiles.
 - Temporary repositories are removed on both success and failure.
+- Development-only local input requires an explicit enable flag and resolved allowed
+  roots; traversal, symlink escapes, non-Git paths, and repository subdirectories are
+  rejected.
 
 ## Known V0.1 limitations
 
@@ -166,9 +205,11 @@ against the implementation brief is tracked in [the milestone checklist](docs/V0
   more commits than the configured history depth; RoadTrace reports that boundary.
 - GitHub pull requests, issues, and release descriptions are not fetched; local Git
   commits and tags are used.
-- Capability clustering is deliberately small and deterministic. Optional semantics
-  can improve labels but cannot create unsupported capabilities.
+- Deterministic clustering is evidence-backed but conservative in unfamiliar domains.
+  Optional semantics can improve naming, merging, categories, and hierarchy but
+  cannot create unsupported capabilities.
 - Synchronous HTTP results and SQLite target local/single-user operation. Large-scale
   concurrency, caching, cancellation, and durable jobs are not included.
-- Private repositories, authentication, and future plan-vs-actual comparison are
-  explicitly outside V0.1.
+- Private GitHub authentication and future plan-vs-actual comparison are explicitly
+  outside V0.1; private worktrees are available only through the opt-in local
+  development boundary above.

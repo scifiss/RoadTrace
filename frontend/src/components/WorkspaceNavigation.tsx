@@ -1,10 +1,10 @@
 import type { View } from '../App'
-import type { CanonicalCategory, CategorySummary } from '../types'
+import type { CategorySummary, LensLabel } from '../types'
 
 interface WorkspaceNavigationProps {
   categories: CategorySummary[]
-  category: CanonicalCategory | 'ALL'
-  onCategoryChange: (category: CanonicalCategory | 'ALL') => void
+  category: LensLabel | 'ALL'
+  onCategoryChange: (category: LensLabel | 'ALL') => void
   onQueryChange: (query: string) => void
   onViewChange: (view: View) => void
   query: string
@@ -19,7 +19,18 @@ const tabs: { id: View; label: string }[] = [
   { id: 'data', label: 'Data hints' },
 ]
 
-const categoryColors = ['#7c5cff', '#17b8c5', '#f59e0b', '#ec4899', '#438cf5', '#ef5350', '#20b886', '#7890ae']
+const categoryColors = [
+  '#7c5cff',
+  '#17b8c5',
+  '#f59e0b',
+  '#ec4899',
+  '#438cf5',
+  '#ef5350',
+  '#20b886',
+  '#7890ae',
+  '#a78bfa',
+  '#eab308',
+]
 
 export function WorkspaceNavigation({
   categories,
@@ -67,14 +78,14 @@ export function WorkspaceNavigation({
         </label>
       </div>
       {supportsCategories && (
-        <div className="category-chips" aria-label="Filter by category">
+        <div className="category-chips" aria-label="Filter by lens">
           <button
             aria-pressed={category === 'ALL'}
             className="category-chip"
             onClick={() => onCategoryChange('ALL')}
             type="button"
           >
-            <span style={{ background: '#e8f1ff' }} /> All categories
+            <span style={{ background: '#e8f1ff' }} /> All lenses
           </button>
           {categories.map((item, index) => (
             <button

@@ -1,23 +1,25 @@
-import type { Capability, CategorySummary, CanonicalCategory } from '../types'
+import type { Capability, CategorySummary, LensLabel } from '../types'
 
 interface CategoryOverviewProps {
-  activeCategory: CanonicalCategory | 'ALL'
+  activeCategory: LensLabel | 'ALL'
   categories: CategorySummary[]
   capabilities: Capability[]
-  onCategoryChange: (category: CanonicalCategory | 'ALL') => void
+  onCategoryChange: (category: LensLabel | 'ALL') => void
   onSelect: (capability: Capability) => void
   query: string
 }
 
-const categoryIcons: Record<CanonicalCategory, string> = {
-  'Product & UX': '◎',
-  'Core Capability': '◆',
-  Data: '▤',
-  'Platform & Integration': '↔',
-  'Reliability & Safety': '◇',
+const categoryIcons: Record<string, string> = {
+  'Experience & Interaction': '◎',
+  'Domain Capability': '◆',
+  'Data & State': '▤',
+  'Knowledge & Intelligence': '⌬',
+  'Automation & Agency': '↻',
+  'Interfaces & Ecosystem': '↔',
+  'Trust & Governance': '◇',
   'Quality & Evaluation': '✓',
-  Operations: '⌁',
-  'Developer & Documentation': '⌘',
+  'Operations & Scale': '⌁',
+  'Distribution & Ecosystem': '⌘',
 }
 
 export function CategoryOverview({
@@ -37,7 +39,7 @@ export function CategoryOverview({
           <p className="eyebrow">Capability landscape</p>
           <h2 id="overview-heading">What exists now</h2>
         </div>
-        <p>Eight stable lenses. Select one to focus the constellation and roadmap.</p>
+        <p>Versioned analysis lenses. Select one to focus the constellation and roadmap.</p>
       </div>
       <div className="category-grid">
         {categories.map((summary, index) => {
@@ -56,7 +58,7 @@ export function CategoryOverview({
             >
               <div className="category-card__top">
                 <span className="category-icon" aria-hidden="true">
-                  {categoryIcons[summary.category]}
+                  {categoryIcons[summary.category] ?? '·'}
                 </span>
                 <span className="count-badge">{summary.capability_count}</span>
               </div>

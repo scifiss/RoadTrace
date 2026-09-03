@@ -5,28 +5,36 @@ import sys
 from collections import Counter, defaultdict, deque
 from pathlib import Path
 
+from app.analysis.behaviors import build_behavior_summaries
 from app.analysis.languages import LanguageAnalysis, PendingRelationship, build_entity, stable_id
 from app.domain import (
-    CanonicalCategory,
+    BehaviorSummary,
     Capability,
+    CapabilityState,
+    CapabilityStateKind,
+    CapabilityTrait,
     CategorySummary,
     ChangeType,
     CodeEntity,
     CodeRelationship,
     CommitRecord,
+    ConfidenceDimensions,
     EntityType,
     EvidenceKind,
     GraphEdge,
     GraphNode,
     GraphProjection,
+    KnowledgeQuality,
+    LensSet,
     MaturitySignals,
     MaturityState,
+    Observation,
     ObservedEvidence,
     RelationshipType,
     TimelineEvent,
 )
 from app.ingestion.repository import SourceFile
-from app.taxonomy import TAXONOMY
+from app.taxonomy import DEFAULT_LENS_SET, active_lenses, lens_label
 
 
 def support_entities(files: list[SourceFile]) -> LanguageAnalysis:
@@ -46,8 +54,8 @@ def support_entities(files: list[SourceFile]) -> LanguageAnalysis:
             line_end=max(1, len(source_file.content.splitlines())),
         )
         if source_file.language == "Documentation":
-            evidence.kind = EvidenceKind.DOCUMENTATION
-            evidence.label = f"Documentation: {source_file.path}"
+            evidence.kind = EvidenceKind.DOCUMENT_CLAIM
+            evidence.label = f"Documentation claim source: {source_file.path}"
         result.entities.append(entity)
         result.evidence.append(evidence)
     return result
@@ -147,7 +155,13 @@ def _resolve_target(
         return by_qualified[normalized]
     tail = normalized.rsplit(".", 1)[-1]
     candidates = by_name.get(tail, [])
-    return candidates[0] if len(candidates) == 1 else None
+    if len(candidates) == 1:
+        return candidates[0]
+    if "." not in normalized:
+        top_level = [item for item in candidates if item.type != EntityType.METHOD]
+        if len(top_level) == 1:
+            return top_level[0]
+    return None
 
 
 def _dependency_root(name: str) -> str:
@@ -171,23 +185,52 @@ def _deduplicate_relationships(items: list[CodeRelationship]) -> list[CodeRelati
 
 
 class CapabilityInferer:
+    def __init__(self, lens_set: LensSet | None = None) -> None:
+        self.lens_set = lens_set or DEFAULT_LENS_SET
+
     def infer(
         self,
         entities: list[CodeEntity],
         relationships: list[CodeRelationship],
         evidence: list[ObservedEvidence],
         commits: list[CommitRecord],
-    ) -> tuple[list[Capability], list[TimelineEvent], list[CategorySummary]]:
+        observations: list[Observation] | None = None,
+    ) -> tuple[list[Capability], list[BehaviorSummary]]:
         evidence_by_id = {item.id: item for item in evidence}
         entity_by_id = {item.id: item for item in entities}
-        rules = self._candidate_rules(entities, evidence)
+        behaviors = build_behavior_summaries(
+            entities,
+            relationships,
+            evidence,
+            observations,
+            self.lens_set,
+        )
         capabilities: list[Capability] = []
-        for category, name, description, matched_entities, matched_evidence, parent_name in rules:
-            if not matched_evidence:
+        grouped: dict[tuple[str, str], list[BehaviorSummary]] = defaultdict(list)
+        for behavior in behaviors:
+            grouped[(behavior.primary_lens or "domain-capability", behavior.name)].append(behavior)
+
+        for (primary_lens, name), supporting_behaviors in grouped.items():
+            entity_ids = _unique(
+                entity_id
+                for behavior in supporting_behaviors
+                for entity_id in behavior.supporting_entity_ids
+            )[:80]
+            evidence_ids = _unique(
+                evidence_id
+                for behavior in supporting_behaviors
+                for evidence_id in behavior.evidence_ids
+                if evidence_id in evidence_by_id
+            )[:120]
+            observation_ids = _unique(
+                observation_id
+                for behavior in supporting_behaviors
+                for observation_id in behavior.observation_ids
+            )[:160]
+            if not entity_ids or not evidence_ids:
                 continue
-            entity_ids = _unique(entity.id for entity in matched_entities)[:80]
-            evidence_ids = _unique(item.id for item in matched_evidence)[:120]
-            capability_id = stable_id("cap", category, name)
+            matched_evidence = [evidence_by_id[item] for item in evidence_ids]
+            matched_entities = [entity_by_id[item] for item in entity_ids if item in entity_by_id]
             related_commits = _commits_for_evidence(commits, matched_evidence)
             commit_evidence = [stable_id("evcommit", commit.hash) for commit in related_commits]
             evidence_ids = _unique([*evidence_ids, *commit_evidence])
@@ -197,15 +240,44 @@ class CapabilityInferer:
                 relationships,
                 entity_by_id,
                 evidence_by_id,
-                category,
+                primary_lens,
             )
+            secondary_lenses = _unique(
+                lens_item
+                for behavior in supporting_behaviors
+                for lens_item in behavior.secondary_lenses
+                if lens_item != primary_lens
+            )
+            capability_id = stable_id("cap", primary_lens, name)
+            dimensions = _aggregate_confidence_dimensions(
+                supporting_behaviors, bool(related_commits)
+            )
+            primary_label = lens_label(self.lens_set, primary_lens)
             capabilities.append(
                 Capability(
                     id=capability_id,
                     name=name,
-                    description=description,
-                    category=category,
-                    parent_id=stable_id("cap", category, parent_name) if parent_name else None,
+                    description=supporting_behaviors[0].description,
+                    primary_lens=primary_lens,
+                    secondary_lenses=secondary_lenses,
+                    category=primary_label,
+                    parent_id=None,
+                    behavior_ids=[item.id for item in supporting_behaviors],
+                    aliases=_unique(
+                        item.name for item in supporting_behaviors if item.name != name
+                    ),
+                    secondary_categories=[
+                        lens_label(self.lens_set, item) for item in secondary_lenses
+                    ],
+                    observation_ids=observation_ids,
+                    traits=_capability_traits(supporting_behaviors, evidence_ids, matched_entities),
+                    knowledge_quality=_knowledge_quality(
+                        supporting_behaviors,
+                        evidence_ids,
+                        matched_evidence,
+                        signals,
+                        dimensions,
+                    ),
                     entity_ids=entity_ids,
                     evidence_ids=evidence_ids,
                     commit_hashes=[commit.hash for commit in related_commits],
@@ -213,338 +285,83 @@ class CapabilityInferer:
                     last_changed=related_commits[-1].timestamp if related_commits else None,
                     maturity=maturity_state(signals, len(entity_ids)),
                     maturity_signals=signals,
-                    confidence=capability_confidence(matched_evidence, len(entity_ids)),
-                    reasoning_summary=_reasoning(name, matched_evidence, matched_entities, signals),
-                )
-            )
-
-        for capability in capabilities:
-            if capability.parent_id:
-                parent = next(
-                    (item for item in capabilities if item.id == capability.parent_id), None
-                )
-                if parent:
-                    parent.child_ids.append(capability.id)
-                else:
-                    capability.parent_id = None
-
-        timeline = build_timeline(capabilities, commits)
-        categories = [
-            CategorySummary(
-                category=category,
-                capability_count=sum(cap.category == category for cap in capabilities),
-                evidence_count=len(
-                    {
-                        evidence_id
-                        for cap in capabilities
-                        if cap.category == category
-                        for evidence_id in cap.evidence_ids
-                    }
-                ),
-            )
-            for category in TAXONOMY
-        ]
-        return capabilities, timeline, categories
-
-    def _candidate_rules(
-        self, entities: list[CodeEntity], evidence: list[ObservedEvidence]
-    ) -> list[
-        tuple[
-            CanonicalCategory,
-            str,
-            str,
-            list[CodeEntity],
-            list[ObservedEvidence],
-            str | None,
-        ]
-    ]:
-        evidence_by_id = {item.id: item for item in evidence}
-
-        def select_entities(predicate) -> list[CodeEntity]:
-            return [item for item in entities if predicate(item)]
-
-        def selected_evidence(selected: list[CodeEntity]) -> list[ObservedEvidence]:
-            return [
-                evidence_by_id[evidence_id]
-                for entity in selected
-                for evidence_id in entity.evidence_ids
-                if evidence_id in evidence_by_id
-            ]
-
-        ui = select_entities(
-            lambda item: (
-                item.type == EntityType.UI_COMPONENT
-                or _contains_any(item, ("component", "view", "screen", "page", "ui/", "frontend/"))
-            )
-        )
-        workflows = select_entities(
-            lambda item: (
-                bool(item.metadata.get("entrypoint")) and item.type != EntityType.API_ENDPOINT
-            )
-        )
-        core = select_entities(_is_core_entity)
-        schemas = select_entities(lambda item: item.type == EntityType.SCHEMA)
-        persistence = select_entities(
-            lambda item: _contains_any(
-                item,
-                (
-                    "database",
-                    "repository",
-                    "persist",
-                    "storage",
-                    "migration",
-                    "cache",
-                    "ingest",
-                    "transform",
-                    "sqlite",
-                    "model",
-                ),
-            )
-        )
-        api = select_entities(lambda item: item.type == EntityType.API_ENDPOINT)
-        integrations = select_entities(
-            lambda item: (
-                item.type == EntityType.EXTERNAL_MODULE and bool(item.metadata.get("external"))
-            )
-        )
-        reliability = select_entities(
-            lambda item: _contains_any(
-                item,
-                (
-                    "validat",
-                    "security",
-                    "permission",
-                    "auth",
-                    "sanitize",
-                    "safe",
-                    "error",
-                    "guard",
-                    "limit",
-                ),
-            )
-        )
-        tests = select_entities(
-            lambda item: (
-                item.type == EntityType.TEST
-                or item.file_path.startswith("test")
-                or "/test" in item.file_path.lower()
-            )
-        )
-        ci = select_entities(
-            lambda item: (
-                item.type == EntityType.CONFIGURATION
-                and _contains_any(item, (".github/workflows", "gitlab-ci", "circleci", "jenkins"))
-            )
-        )
-        runtime = select_entities(
-            lambda item: (
-                item.type == EntityType.CONFIGURATION
-                and _contains_any(
-                    item,
-                    (
-                        "dockerfile",
-                        "compose",
-                        "procfile",
-                        "deploy",
-                        "terraform",
-                        "render",
-                        "fly.toml",
+                    confidence=max(
+                        capability_confidence(matched_evidence, len(entity_ids)),
+                        max(item.confidence for item in supporting_behaviors),
+                    ),
+                    confidence_dimensions=dimensions,
+                    reasoning_summary=_behavior_reasoning(
+                        name,
+                        supporting_behaviors,
+                        matched_evidence,
+                        matched_entities,
+                        signals,
                     ),
                 )
             )
+
+        _assign_hierarchy_from_behaviors(capabilities, behaviors)
+        link_capability_hierarchy(capabilities)
+        return capabilities, behaviors
+
+
+def _assign_hierarchy_from_behaviors(
+    capabilities: list[Capability], behaviors: list[BehaviorSummary]
+) -> None:
+    behavior_by_id = {item.id: item for item in behaviors}
+    capability_by_name: dict[str, Capability] = {}
+    for capability in capabilities:
+        capability_by_name.setdefault(capability.name.casefold(), capability)
+    for capability in capabilities:
+        parent_name = next(
+            (
+                behavior.parent_name
+                for behavior_id in capability.behavior_ids
+                if (behavior := behavior_by_id.get(behavior_id)) is not None
+                and behavior.parent_name
+            ),
+            None,
         )
-        docs = select_entities(
-            lambda item: (
-                evidence_by_id.get(
-                    item.evidence_ids[0],
-                    ObservedEvidence(id="x", kind=EvidenceKind.SOURCE, label="x"),
-                ).kind
-                == EvidenceKind.DOCUMENTATION
-            )
+        if parent_name:
+            parent = capability_by_name.get(parent_name.casefold())
+            capability.parent_id = parent.id if parent and parent.id != capability.id else None
+
+
+def link_capability_hierarchy(capabilities: list[Capability]) -> None:
+    by_id = {item.id: item for item in capabilities}
+    for item in capabilities:
+        item.child_ids = []
+    for item in capabilities:
+        if item.parent_id == item.id or item.parent_id not in by_id:
+            item.parent_id = None
+            continue
+        parent = by_id[item.parent_id]
+        if parent.parent_id == item.id:
+            item.parent_id = None
+            continue
+        parent.child_ids.append(item.id)
+
+
+def build_category_summaries(
+    capabilities: list[Capability], lens_set: LensSet | None = None
+) -> list[CategorySummary]:
+    selected = lens_set or DEFAULT_LENS_SET
+    return [
+        CategorySummary(
+            lens_id=lens.id,
+            category=lens.label,
+            capability_count=sum(cap.primary_lens == lens.id for cap in capabilities),
+            evidence_count=len(
+                {
+                    evidence_id
+                    for cap in capabilities
+                    if cap.primary_lens == lens.id
+                    for evidence_id in cap.evidence_ids
+                }
+            ),
         )
-        tooling = select_entities(
-            lambda item: (
-                item.type == EntityType.CONFIGURATION
-                and _contains_any(
-                    item,
-                    (
-                        "pyproject.toml",
-                        "package.json",
-                        "vite.config",
-                        "tsconfig",
-                        "makefile",
-                        "ruff",
-                        "eslint",
-                    ),
-                )
-            )
-        )
-
-        topic = _core_topic(core)
-        core_name = f"{topic} Engine" if topic else "Domain Logic"
-        return [
-            (
-                CanonicalCategory.PRODUCT_UX,
-                "User Interface",
-                "Interactive components and presentation surfaces found in the source tree.",
-                ui,
-                selected_evidence(ui),
-                None,
-            ),
-            (
-                CanonicalCategory.PRODUCT_UX,
-                "User Workflows",
-                "User-facing or command entry points and their reachable handlers.",
-                workflows,
-                selected_evidence(workflows),
-                "User Interface" if ui else None,
-            ),
-            (
-                CanonicalCategory.CORE,
-                core_name,
-                (
-                    "Project-specific implementation functions and classes that form the "
-                    "domain engine."
-                ),
-                core[:80],
-                selected_evidence(core[:80]),
-                None,
-            ),
-            (
-                CanonicalCategory.DATA,
-                "Data Models & Schemas",
-                "Typed schemas and domain data structures observed in executable source.",
-                schemas,
-                selected_evidence(schemas),
-                None,
-            ),
-            (
-                CanonicalCategory.DATA,
-                "Persistence & Transformation",
-                "Persistence, ingestion, caching, migration, or transformation code.",
-                persistence,
-                selected_evidence(persistence),
-                None,
-            ),
-            (
-                CanonicalCategory.PLATFORM,
-                "API Surface",
-                "HTTP or service endpoints exposed by application code.",
-                api,
-                selected_evidence(api),
-                None,
-            ),
-            (
-                CanonicalCategory.PLATFORM,
-                "External Integrations",
-                "Third-party modules directly imported by the analyzed source.",
-                integrations,
-                selected_evidence(integrations),
-                None,
-            ),
-            (
-                CanonicalCategory.RELIABILITY,
-                "Validation & Guardrails",
-                "Validation, permissions, security, error handling, and bounded-operation code.",
-                reliability,
-                selected_evidence(reliability),
-                None,
-            ),
-            (
-                CanonicalCategory.QUALITY,
-                "Automated Testing",
-                "Unit, integration, evaluation, or benchmark symbols found in test sources.",
-                tests,
-                selected_evidence(tests),
-                None,
-            ),
-            (
-                CanonicalCategory.OPERATIONS,
-                "Continuous Integration",
-                "Continuous integration and automated delivery configuration.",
-                ci,
-                selected_evidence(ci),
-                None,
-            ),
-            (
-                CanonicalCategory.OPERATIONS,
-                "Deployment & Runtime",
-                "Deployment, container, and runtime configuration.",
-                runtime,
-                selected_evidence(runtime),
-                None,
-            ),
-            (
-                CanonicalCategory.DEVELOPER,
-                "Documentation",
-                (
-                    "Repository documentation and contributor guidance, treated as "
-                    "supporting evidence."
-                ),
-                docs,
-                selected_evidence(docs),
-                None,
-            ),
-            (
-                CanonicalCategory.DEVELOPER,
-                "Developer Tooling",
-                "Local development, build, type-checking, and lint configuration.",
-                tooling,
-                selected_evidence(tooling),
-                None,
-            ),
-        ]
-
-
-def _is_core_entity(entity: CodeEntity) -> bool:
-    if entity.type not in {EntityType.CLASS, EntityType.FUNCTION, EntityType.METHOD}:
-        return False
-    lowered = f"{entity.file_path} {entity.qualified_name}".lower()
-    return not any(
-        marker in lowered
-        for marker in (
-            "test",
-            "migration",
-            "config",
-            "setup",
-            "route",
-            "controller",
-            "__init__",
-            "vite.config",
-        )
-    )
-
-
-def _contains_any(entity: CodeEntity, needles: tuple[str, ...]) -> bool:
-    value = f"{entity.file_path} {entity.qualified_name}".lower()
-    return any(needle in value for needle in needles)
-
-
-def _core_topic(entities: list[CodeEntity]) -> str | None:
-    stop = {
-        "app",
-        "src",
-        "lib",
-        "core",
-        "main",
-        "index",
-        "service",
-        "function",
-        "get",
-        "set",
-        "create",
-        "update",
-        "handle",
-        "manager",
-    }
-    tokens: Counter[str] = Counter()
-    for entity in entities:
-        words = re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])", entity.name.replace("_", " "))
-        tokens.update(word.lower() for word in words if len(word) > 3 and word.lower() not in stop)
-    if not tokens:
-        return None
-    topic, count = tokens.most_common(1)[0]
-    return topic.title() if count >= 2 or len(entities) <= 5 else None
+        for lens in active_lenses(selected)
+    ]
 
 
 def calculate_maturity_signals(
@@ -553,7 +370,7 @@ def calculate_maturity_signals(
     relationships: list[CodeRelationship],
     entity_by_id: dict[str, CodeEntity],
     evidence_by_id: dict[str, ObservedEvidence],
-    category: CanonicalCategory,
+    primary_lens: str,
 ) -> MaturitySignals:
     selected = {entity_id for entity_id in entity_ids}
     selected_entities = [entity_by_id[item] for item in selected if item in entity_by_id]
@@ -571,6 +388,11 @@ def calculate_maturity_signals(
             EntityType.TEST,
         }
         for item in selected_entities
+    ) or (
+        primary_lens in {"operations-scale", "distribution-ecosystem"}
+        and any(
+            item.type in {EntityType.CONFIGURATION, EntityType.FILE} for item in selected_entities
+        )
     )
     reachable = any(
         relationship.type
@@ -590,12 +412,18 @@ def calculate_maturity_signals(
         item.kind == EvidenceKind.TEST for item in evidence_items
     )
     validation = any(
-        token in f"{item.file_path} {item.qualified_name}".lower()
+        token
+        in (
+            f"{item.file_path} {item.qualified_name} {item.metadata.get('semantic_signals', '')}"
+        ).lower()
         for item in selected_entities
         for token in ("validat", "guard", "security", "permission", "sanitize", "error")
     )
-    operations = category == CanonicalCategory.OPERATIONS
-    documentation = any(item.kind == EvidenceKind.DOCUMENTATION for item in evidence_items)
+    operations = primary_lens == "operations-scale"
+    documentation = any(
+        item.kind in {EvidenceKind.DOCUMENTATION, EvidenceKind.DOCUMENT_CLAIM}
+        for item in evidence_items
+    )
     monitoring = any(
         token in f"{item.file_path} {item.qualified_name}".lower()
         for item in selected_entities
@@ -638,6 +466,8 @@ def capability_confidence(evidence: list[ObservedEvidence], entity_count: int) -
         EvidenceKind.DEPENDENCY: 0.08,
         EvidenceKind.DOCUMENTATION: 0.04,
         EvidenceKind.COMMIT: 0.06,
+        EvidenceKind.SEMANTIC: 0.14,
+        EvidenceKind.DOCUMENT_CLAIM: 0.02,
     }
     kinds = {item.kind for item in evidence}
     return round(
@@ -645,18 +475,98 @@ def capability_confidence(evidence: list[ObservedEvidence], entity_count: int) -
     )
 
 
-def _reasoning(
+def _aggregate_confidence_dimensions(
+    behaviors: list[BehaviorSummary], has_history: bool
+) -> ConfidenceDimensions:
+    count = max(1, len(behaviors))
+    return ConfidenceDimensions(
+        evidence=round(sum(item.confidence_dimensions.evidence for item in behaviors) / count, 2),
+        behavior=round(sum(item.confidence_dimensions.behavior for item in behaviors) / count, 2),
+        semantic=round(sum(item.confidence_dimensions.semantic for item in behaviors) / count, 2),
+        temporal=0.88 if has_history else 0.0,
+    )
+
+
+def _capability_traits(
+    behaviors: list[BehaviorSummary],
+    evidence_ids: list[str],
+    entities: list[CodeEntity],
+) -> list[CapabilityTrait]:
+    roles = {role for behavior in behaviors for role in behavior.mechanism_types}
+    backed = evidence_ids[:20]
+    if not backed:
+        return []
+    candidates = {
+        "INTERACTION": ("interactive", "Interactive"),
+        "PERSISTENCE": ("persistent", "Persistent"),
+        "EXTERNAL_INTEGRATION": ("externally-integrated", "Externally integrated"),
+        "INTEGRATION": ("interface-exposed", "Interface exposed"),
+        "AUTOMATION": ("automated", "Automated"),
+        "EVALUATION": ("evaluated", "Evaluated"),
+        "VALIDATION": ("guarded", "Guarded"),
+        "INFERENCE": ("inference-backed", "Inference backed"),
+    }
+    traits = [
+        CapabilityTrait(id=trait_id, label=label, evidence_ids=backed, confidence=0.78)
+        for role, (trait_id, label) in candidates.items()
+        if role in roles
+    ]
+    if any(item.type == EntityType.UI_COMPONENT for item in entities) and not any(
+        item.id == "interactive" for item in traits
+    ):
+        traits.append(
+            CapabilityTrait(
+                id="interactive", label="Interactive", evidence_ids=backed, confidence=0.86
+            )
+        )
+    return traits[:8]
+
+
+def _knowledge_quality(
+    behaviors: list[BehaviorSummary],
+    evidence_ids: list[str],
+    evidence: list[ObservedEvidence],
+    signals: MaturitySignals,
+    dimensions: ConfidenceDimensions,
+) -> KnowledgeQuality | None:
+    roles = {role for behavior in behaviors for role in behavior.mechanism_types}
+    if not roles.intersection({"INFERENCE", "MATCHING", "SEARCH_FILTER"}):
+        return None
+    source_kinds = {item.source_kind for item in evidence if item.source_kind is not None}
+    return KnowledgeQuality(
+        breadth="multiple observed source kinds"
+        if len(source_kinds) > 1
+        else "single observed source kind",
+        depth="implementation-linked" if signals.implementation else "claim-level only",
+        executability="runtime-reachable"
+        if signals.reachable or signals.exposed
+        else "not established",
+        grounding="code and tests" if signals.tests else "code evidence",
+        freshness="Git history observed" if dimensions.temporal > 0 else "not established",
+        evidence_ids=evidence_ids[:24],
+        # The schema supports a future defensible knowledge-quality measure. The
+        # current evidence is sufficient for descriptions, not a numeric score.
+        confidence=None,
+    )
+
+
+def _behavior_reasoning(
     name: str,
+    behaviors: list[BehaviorSummary],
     evidence: list[ObservedEvidence],
     entities: list[CodeEntity],
     signals: MaturitySignals,
 ) -> str:
     kind_counts = Counter(item.kind.value.lower().replace("_", " ") for item in evidence)
     kinds = ", ".join(f"{count} {kind}" for kind, count in kind_counts.most_common(3))
+    behavior_names = ", ".join(f'"{item.name}"' for item in behaviors)
+    semantic_terms = _unique(term for item in behaviors for term in item.semantic_terms)[:8]
+    term_text = ", ".join(semantic_terms) or "connected implementation structure"
     signal_names = [key.replace("_", " ") for key, value in signals.model_dump().items() if value]
     signal_text = ", ".join(signal_names) or "discovery only"
     return (
-        f"{name} is grounded in {len(entities)} code/configuration entities ({kinds}). "
+        f"Observed {len(entities)} cooperating code entities ({kinds}) with signals "
+        f'{term_text}; inferred behavior {behavior_names}; synthesized capability "{name}". '
         f"Observed maturity signals: {signal_text}."
     )
 
@@ -725,6 +635,41 @@ def build_timeline(
     return sorted(events, key=lambda item: item.timestamp)
 
 
+def build_capability_states(
+    capabilities: list[Capability], timeline: list[TimelineEvent]
+) -> list[CapabilityState]:
+    """Materialize temporal state transitions without inventing split/merge events."""
+    result: list[CapabilityState] = []
+    by_capability: dict[str, list[TimelineEvent]] = defaultdict(list)
+    for event in timeline:
+        by_capability[event.capability_id].append(event)
+    for capability in capabilities:
+        events = sorted(by_capability.get(capability.id, []), key=lambda item: item.timestamp)
+        for index, event in enumerate(events):
+            kind = (
+                CapabilityStateKind.INTRODUCED
+                if index == 0
+                else CapabilityStateKind.REFACTORED
+                if event.change_type == ChangeType.REFACTOR
+                else CapabilityStateKind.REMOVED
+                if event.change_type == ChangeType.REMOVAL
+                else CapabilityStateKind.STRENGTHENED
+            )
+            result.append(
+                CapabilityState(
+                    id=stable_id("capstate", capability.id, event.id),
+                    capability_id=capability.id,
+                    kind=kind,
+                    timestamp=event.timestamp,
+                    summary=event.summary,
+                    evidence_ids=event.evidence_ids,
+                    behavior_ids=capability.behavior_ids,
+                    confidence=capability.confidence_dimensions.temporal,
+                )
+            )
+    return result
+
+
 def _unique(values) -> list:
     return list(dict.fromkeys(values))
 
@@ -745,33 +690,39 @@ def build_graphs(
     capabilities: list[Capability],
     max_nodes: int,
     workflow_depth: int,
+    lens_set: LensSet | None = None,
 ) -> tuple[GraphProjection, GraphProjection, GraphProjection, GraphProjection]:
-    capability_graph = _capability_graph(capabilities)
+    capability_graph = _capability_graph(capabilities, lens_set or DEFAULT_LENS_SET)
     code_graph = _code_graph(entities, relationships, max_nodes)
     workflow_graph = _workflow_graph(entities, relationships, max_nodes, workflow_depth)
     data_graph = _data_graph(entities, relationships, max_nodes)
     return capability_graph, code_graph, workflow_graph, data_graph
 
 
-def _capability_graph(capabilities: list[Capability]) -> GraphProjection:
+def _capability_graph(capabilities: list[Capability], lens_set: LensSet) -> GraphProjection:
     nodes = [
-        GraphNode(id=f"category:{category.value}", label=category.value, kind="CATEGORY")
-        for category in TAXONOMY
+        GraphNode(id=f"lens:{lens.id}", label=lens.label, kind="LENS")
+        for lens in active_lenses(lens_set)
     ]
     nodes.extend(
         GraphNode(
             id=cap.id,
             label=cap.name,
             kind="CAPABILITY",
-            group=cap.category.value,
-            metadata={"maturity": cap.maturity.value, "confidence": cap.confidence},
+            group=cap.category,
+            metadata={
+                "maturity": cap.maturity.value,
+                "confidence": cap.confidence,
+                "primary_lens": cap.primary_lens,
+                "observation_ids": cap.observation_ids,
+            },
         )
         for cap in capabilities
     )
     edges = [
         GraphEdge(
-            id=stable_id("edge", cap.parent_id or cap.category, cap.id),
-            source=cap.parent_id or f"category:{cap.category.value}",
+            id=stable_id("edge", cap.parent_id or cap.primary_lens, cap.id),
+            source=cap.parent_id or f"lens:{cap.primary_lens}",
             target=cap.id,
             type="CONTAINS",
         )
@@ -779,7 +730,7 @@ def _capability_graph(capabilities: list[Capability]) -> GraphProjection:
     ]
     return GraphProjection(
         label="Capability graph",
-        description="Canonical categories, inferred capabilities, and subcapabilities.",
+        description="Versioned lenses, inferred capabilities, and subcapabilities.",
         nodes=nodes,
         edges=edges,
     )

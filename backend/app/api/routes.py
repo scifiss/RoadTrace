@@ -17,7 +17,7 @@ async def health() -> HealthResponse:
 async def create_analysis(payload: AnalysisRequest, request: Request) -> AnalysisResult:
     try:
         return await asyncio.to_thread(
-            request.app.state.analysis_service.analyze_url, payload.repository_url
+            request.app.state.analysis_service.analyze_input, payload.repository_url
         )
     except RepositoryInputError as exc:
         raise HTTPException(
@@ -26,7 +26,7 @@ async def create_analysis(payload: AnalysisRequest, request: Request) -> Analysi
     except RepositoryAcquisitionError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"The public repository could not be obtained: {exc}",
+            detail=f"The repository could not be obtained: {exc}",
         ) from exc
 
 

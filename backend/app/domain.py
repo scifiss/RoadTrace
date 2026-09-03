@@ -4,18 +4,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
-
-
-class CanonicalCategory(StrEnum):
-    PRODUCT_UX = "Product & UX"
-    CORE = "Core Capability"
-    DATA = "Data"
-    PLATFORM = "Platform & Integration"
-    RELIABILITY = "Reliability & Safety"
-    QUALITY = "Quality & Evaluation"
-    OPERATIONS = "Operations"
-    DEVELOPER = "Developer & Documentation"
+from pydantic import BaseModel, Field, model_validator
 
 
 class EvidenceKind(StrEnum):
@@ -28,6 +17,46 @@ class EvidenceKind(StrEnum):
     DEPENDENCY = "DEPENDENCY"
     COMMIT = "COMMIT"
     DOCUMENTATION = "DOCUMENTATION"
+    SEMANTIC = "SEMANTIC"
+    DOCUMENT_CLAIM = "DOCUMENT_CLAIM"
+
+
+class SourceKind(StrEnum):
+    CODE = "CODE"
+    TEST = "TEST"
+    CONFIGURATION = "CONFIGURATION"
+    USER_INTERFACE = "USER_INTERFACE"
+    DOCUMENTATION = "DOCUMENTATION"
+    GIT = "GIT"
+
+
+class ObservationKind(StrEnum):
+    STRUCTURE = "STRUCTURE"
+    INTERACTION = "INTERACTION"
+    DATA_FLOW = "DATA_FLOW"
+    PERSISTENCE = "PERSISTENCE"
+    TRANSFORMATION = "TRANSFORMATION"
+    VALIDATION = "VALIDATION"
+    EXTERNAL_CALL = "EXTERNAL_CALL"
+    TEST_BEHAVIOR = "TEST_BEHAVIOR"
+    CONFIGURATION = "CONFIGURATION"
+    DOCUMENT_CLAIM = "DOCUMENT_CLAIM"
+    TEMPORAL_CHANGE = "TEMPORAL_CHANGE"
+
+
+class LensStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    DEPRECATED = "DEPRECATED"
+
+
+class CapabilityStateKind(StrEnum):
+    INTRODUCED = "INTRODUCED"
+    STRENGTHENED = "STRENGTHENED"
+    REFACTORED = "REFACTORED"
+    SPLIT = "SPLIT"
+    MERGED = "MERGED"
+    DEPRECATED = "DEPRECATED"
+    REMOVED = "REMOVED"
 
 
 class EntityType(StrEnum):
@@ -90,6 +119,74 @@ class ObservedEvidence(BaseModel):
     commit_hash: str | None = None
     observed_at: datetime | None = None
     detail: str | None = None
+    source_kind: SourceKind | None = None
+    source_revision: str | None = None
+
+
+class Observation(BaseModel):
+    """A normalized, source-independent statement grounded in observed evidence."""
+
+    id: str
+    kind: ObservationKind
+    summary: str
+    evidence_ids: list[str] = Field(min_length=1)
+    entity_ids: list[str] = Field(default_factory=list)
+    relationship_ids: list[str] = Field(default_factory=list)
+    inputs: list[str] = Field(default_factory=list)
+    outputs: list[str] = Field(default_factory=list)
+    terms: list[str] = Field(default_factory=list)
+    structural: bool = False
+    confidence: float = Field(default=0.5, ge=0, le=1)
+
+
+class LensDefinition(BaseModel):
+    id: str = Field(pattern=r"^[a-z][a-z0-9-]*$")
+    label: str = Field(min_length=2, max_length=80)
+    description: str = Field(min_length=4, max_length=400)
+    version: str = "1.0"
+    status: LensStatus = LensStatus.ACTIVE
+    aliases: list[str] = Field(default_factory=list)
+    signals: list[str] = Field(default_factory=list)
+
+
+class LensSet(BaseModel):
+    id: str = "roadtrace-default"
+    version: str = "1.0"
+    lenses: list[LensDefinition] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_unique_lenses(self) -> LensSet:
+        ids = [item.id for item in self.lenses]
+        labels = [item.label.casefold() for item in self.lenses]
+        if len(ids) != len(set(ids)) or len(labels) != len(set(labels)):
+            raise ValueError("lens ids and labels must be unique")
+        if not any(item.status == LensStatus.ACTIVE for item in self.lenses):
+            raise ValueError("a lens set must contain at least one active lens")
+        return self
+
+
+class ConfidenceDimensions(BaseModel):
+    evidence: float = Field(default=0.5, ge=0, le=1)
+    behavior: float = Field(default=0.5, ge=0, le=1)
+    semantic: float = Field(default=0.5, ge=0, le=1)
+    temporal: float = Field(default=0.0, ge=0, le=1)
+
+
+class CapabilityTrait(BaseModel):
+    id: str
+    label: str
+    evidence_ids: list[str] = Field(min_length=1)
+    confidence: float = Field(default=0.5, ge=0, le=1)
+
+
+class KnowledgeQuality(BaseModel):
+    breadth: str | None = None
+    depth: str | None = None
+    executability: str | None = None
+    grounding: str | None = None
+    freshness: str | None = None
+    evidence_ids: list[str] = Field(default_factory=list)
+    confidence: float | None = Field(default=None, ge=0, le=1)
 
 
 class CodeEntity(BaseModel):
@@ -142,9 +239,18 @@ class Capability(BaseModel):
     id: str
     name: str
     description: str
-    category: CanonicalCategory
+    primary_lens: str | None = None
+    secondary_lenses: list[str] = Field(default_factory=list)
+    # Kept in the API during the V0.1 migration. It mirrors the primary lens label.
+    category: str | None = None
     parent_id: str | None = None
     child_ids: list[str] = Field(default_factory=list)
+    behavior_ids: list[str] = Field(default_factory=list)
+    aliases: list[str] = Field(default_factory=list)
+    secondary_categories: list[str] = Field(default_factory=list)
+    observation_ids: list[str] = Field(default_factory=list)
+    traits: list[CapabilityTrait] = Field(default_factory=list)
+    knowledge_quality: KnowledgeQuality | None = None
     entity_ids: list[str] = Field(default_factory=list)
     evidence_ids: list[str] = Field(min_length=1)
     commit_hashes: list[str] = Field(default_factory=list)
@@ -153,7 +259,71 @@ class Capability(BaseModel):
     maturity: MaturityState
     maturity_signals: MaturitySignals
     confidence: float = Field(ge=0, le=1)
+    confidence_dimensions: ConfidenceDimensions = Field(default_factory=ConfidenceDimensions)
     reasoning_summary: str
+
+    @model_validator(mode="after")
+    def synchronize_lens_compatibility(self) -> Capability:
+        if not self.primary_lens and self.category:
+            self.primary_lens = self.category
+        if not self.category and self.primary_lens:
+            self.category = self.primary_lens
+        if not self.secondary_lenses and self.secondary_categories:
+            self.secondary_lenses = list(self.secondary_categories)
+        if not self.secondary_categories and self.secondary_lenses:
+            self.secondary_categories = list(self.secondary_lenses)
+        if not self.primary_lens or not self.category:
+            raise ValueError("capability requires a primary lens")
+        return self
+
+
+class BehaviorSummary(BaseModel):
+    id: str
+    name: str
+    description: str
+    mechanism_types: list[str] = Field(default_factory=list)
+    primary_lens: str | None = None
+    secondary_lenses: list[str] = Field(default_factory=list)
+    primary_category: str | None = None
+    secondary_categories: list[str] = Field(default_factory=list)
+    parent_name: str | None = None
+    supporting_entity_ids: list[str] = Field(default_factory=list)
+    supporting_relationships: list[str] = Field(default_factory=list)
+    observation_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    observable_inputs: list[str] = Field(default_factory=list)
+    observable_outputs: list[str] = Field(default_factory=list)
+    ui_surfaces: list[str] = Field(default_factory=list)
+    api_paths: list[str] = Field(default_factory=list)
+    tests: list[str] = Field(default_factory=list)
+    semantic_terms: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=0.5, ge=0, le=1)
+    confidence_dimensions: ConfidenceDimensions = Field(default_factory=ConfidenceDimensions)
+
+    @model_validator(mode="after")
+    def synchronize_lens_compatibility(self) -> BehaviorSummary:
+        if not self.primary_lens and self.primary_category:
+            self.primary_lens = self.primary_category
+        if not self.primary_category and self.primary_lens:
+            self.primary_category = self.primary_lens
+        if not self.secondary_lenses and self.secondary_categories:
+            self.secondary_lenses = list(self.secondary_categories)
+        if not self.secondary_categories and self.secondary_lenses:
+            self.secondary_categories = list(self.secondary_lenses)
+        if not self.primary_lens:
+            raise ValueError("behavior requires a primary lens")
+        return self
+
+
+class CapabilityState(BaseModel):
+    id: str
+    capability_id: str
+    kind: CapabilityStateKind
+    timestamp: datetime
+    summary: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    behavior_ids: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=0.5, ge=0, le=1)
 
 
 class TimelineEvent(BaseModel):
@@ -193,7 +363,8 @@ class GraphProjection(BaseModel):
 
 
 class CategorySummary(BaseModel):
-    category: CanonicalCategory
+    lens_id: str | None = None
+    category: str
     capability_count: int
     evidence_count: int
 
@@ -217,10 +388,14 @@ class AnalysisResult(BaseModel):
     evidence: list[ObservedEvidence]
     entities: list[CodeEntity]
     relationships: list[CodeRelationship]
+    observations: list[Observation] = Field(default_factory=list)
     commits: list[CommitRecord]
+    behaviors: list[BehaviorSummary] = Field(default_factory=list)
     capabilities: list[Capability]
     timeline: list[TimelineEvent]
+    capability_states: list[CapabilityState] = Field(default_factory=list)
     categories: list[CategorySummary]
+    lens_set: LensSet | None = None
     capability_graph: GraphProjection
     code_graph: GraphProjection
     workflow_graph: GraphProjection

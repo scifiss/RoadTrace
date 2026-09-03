@@ -159,6 +159,55 @@ class PublicGitHubAcquirer:
             yield AcquiredRepository(identity=identity, path=destination)
 
 
+class DevelopmentLocalAcquirer:
+    """Read an existing Git worktree only when an explicit development gate allows it."""
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self.git = GitRunner(settings.git_timeout_seconds)
+
+    @contextmanager
+    def acquire(self, repository_path: str) -> Iterator[AcquiredRepository]:
+        if not self.settings.dev_local_repos:
+            raise RepositoryInputError(
+                "Local repository analysis is disabled; enter a public GitHub repository URL"
+            )
+        if not self.settings.local_repo_roots:
+            raise RepositoryInputError(
+                "Local repository analysis requires ROADTRACE_LOCAL_REPO_ROOTS"
+            )
+        if repository_path != repository_path.strip() or len(repository_path) > 300:
+            raise RepositoryInputError("Enter an exact absolute local repository path")
+        candidate = Path(repository_path)
+        if not candidate.is_absolute():
+            raise RepositoryInputError("Local repository paths must be absolute")
+        try:
+            resolved = candidate.resolve(strict=True)
+            roots = tuple(root.resolve(strict=True) for root in self.settings.local_repo_roots)
+        except (OSError, RuntimeError) as exc:
+            raise RepositoryInputError(
+                "The local repository path or allowed root is invalid"
+            ) from exc
+        if not resolved.is_dir():
+            raise RepositoryInputError("The local repository path must be a directory")
+        if not any(resolved == root or resolved.is_relative_to(root) for root in roots):
+            raise RepositoryInputError(
+                "The local repository path is outside ROADTRACE_LOCAL_REPO_ROOTS"
+            )
+        try:
+            top_level = Path(
+                self.git.run(["rev-parse", "--show-toplevel"], cwd=resolved).strip()
+            ).resolve(strict=True)
+        except RepositoryAcquisitionError as exc:
+            raise RepositoryInputError("The local path is not a readable Git repository") from exc
+        if top_level != resolved:
+            raise RepositoryInputError("Select the top-level directory of the local Git repository")
+        identity = GitHubRepository(
+            owner="local", name=resolved.name, url=f"local://{resolved.name}"
+        )
+        yield AcquiredRepository(identity=identity, path=resolved)
+
+
 IGNORED_DIRECTORIES = {
     ".git",
     ".hg",

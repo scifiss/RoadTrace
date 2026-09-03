@@ -45,8 +45,9 @@ class GitHistoryAnalyzer:
     def analyze(self, repository: Path) -> tuple[list[CommitRecord], str | None, list[str]]:
         hashes = [
             item
-            for item in self.runner.run(["rev-list", "--reverse", "HEAD"], cwd=repository)
-            .splitlines()
+            for item in self.runner.run(
+                ["rev-list", "--reverse", "HEAD"], cwd=repository
+            ).splitlines()
             if item
         ]
         selected_hashes = _sample_commit_hashes(hashes, self.max_commits)
