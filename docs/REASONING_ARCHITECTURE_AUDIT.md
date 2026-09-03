@@ -2,10 +2,14 @@
 
 Date: 2026-09-02
 
+> **Historical engineering record:** this document describes superseded inference
+> behavior observed before the generalized reasoning refactor. It is not the current
+> RoadTrace architecture or product narrative. See
+> [REASONING_ARCHITECTURE.md](REASONING_ARCHITECTURE.md) for the active design.
+
 This audit records the state of the capability-inference implementation immediately
-before the source-independent reasoning correction. It evaluates the uncommitted
-product-semantic work in the current working tree, not only the older `Json Engine`
-implementation.
+before the source-independent reasoning correction. It evaluates both the older
+`Json Engine` implementation and the later benchmark-tuned semantic layer.
 
 ## 1. Current pipeline
 
@@ -30,54 +34,28 @@ selection, captured more code evidence, preserved evidence IDs, and constrained 
 updates. However, the semantic abstraction is still dominated by a large phrase
 catalogue in `analysis/behaviors.py`.
 
-## 2. Footprint of the previous JobTracker guidance
+## 2. Footprint of previous benchmark guidance
 
-### JobTracker-specific
+### Benchmark-specific
 
-The following deterministic capability names and required tokens encode the earlier
-expected output rather than a general reasoning primitive:
+The deterministic layer contained final capability phrases, required token groups,
+parent/child expectations, aliases, and semantic merge rules copied from expected
+outputs for individual validation repositories. Tests then recreated those same
+domains and asserted exact names and parents. Although the outputs looked plausible,
+the benchmark had become an implicit product ontology.
 
-- Application Tracking
-- Search & Filtering under Application Tracking
-- Stage Tracking under Application Tracking
-- Referral, Notes & Role Details
-- Candidate Skill Profile
-- Skill-Fit Visualization and Skill-Fit Assessment
-- Skill Matching, Weighted Fit Scoring, Requirement-Level Explanation
-- Job Requirement Extraction
-- CSV Application Import
-- Job Posting Extraction
-
-The normalization table also contains JobTracker-shaped aliases such as
-`applications`, `jobs`, `roles`, `requiredskills`, `preferredskills`, `stages`, and
-`weighted`. The semantic merge table explicitly maps `job tracking`, `application
-tracker`, and `application management` to one phrase. The primary semantic fixture
-recreates an application tracker and asserts those exact names and parents. The LLM
-prompt names `JSON Engine` and `API Surface` appropriately as anti-patterns, but the
-deterministic candidates supplied to it are already shaped by the fixed catalogue.
-
-These items must be removed from the general inference core. JobTracker should test
-whether open-world inference finds coherent record-management, comparison/scoring,
-and extraction behaviors—not prescribe their final labels.
+The LLM prompt correctly named generic implementation artifacts such as `JSON Engine`
+and `API Surface` as anti-patterns, but the deterministic candidates supplied to it
+were already shaped by the fixed catalogue. All repository-derived product phrases,
+normalization aliases, and exact hierarchy expectations therefore needed removal.
 
 ### Domain-biased
 
-The subsequent GeoWorld validation introduced additional fixed phrases:
-
-- Route Planning
-- Scenario Generation
-- Knowledge Graph Querying
-- LAS Well-Log Inspection
-- Scientific World Modeling
-- Synthetic Seismic Generation
-- Provenance & Lineage Tracking
-- Project Archive Export
-- Request Correlation & Traceability
-
-Some underlying mechanisms are defensible general concepts (graph query, simulation,
-provenance, orchestration), but their current phrase-specific required-token rules are
-domain recognizers, not source-independent inference. LAS and seismic rules are
-unambiguously domain-shaped. They should not remain in the core catalogue.
+Other fixed phrases attempted to recognize particular scientific, mapping, archive,
+and tracing domains. Some underlying mechanisms—graph query, simulation, provenance,
+orchestration, import, and export—are defensible general concepts, but phrase-specific
+required-token rules are domain recognizers rather than source-independent inference.
+They should not remain in the core catalogue.
 
 ### General mechanisms worth retaining in generalized form
 
@@ -150,7 +128,7 @@ These should be migrated rather than rewritten.
    `first_seen` and `last_changed`.
 9. Make relationship topology and operation/data-flow roles contribute independently
    of identifier quality.
-10. Replace exact JobTracker fixture assertions with diversified semantic invariants.
+10. Replace exact single-domain fixture assertions with diversified semantic invariants.
 
 ## 6. Proposed minimal refactor
 

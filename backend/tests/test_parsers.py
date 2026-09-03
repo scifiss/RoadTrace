@@ -91,16 +91,16 @@ def test_javascript_tree_sitter_extracts_api_routes() -> None:
 def test_javascript_tests_become_behavioral_evidence() -> None:
     analysis = JavaScriptTypeScriptAnalyzer().analyze(
         source(
-            "tests/fit.test.ts",
+            "tests/anomaly.test.ts",
             "TypeScript",
-            "describe('weighted skill fit', () => { "
-            "it('explains missing requirements', () => {}); });",
+            "describe('weighted anomaly score', () => { "
+            "it('explains missing signals', () => {}); });",
         )
     )
     tests = [item for item in analysis.entities if item.type == EntityType.TEST]
     assert {item.name for item in tests} == {
-        "weighted skill fit",
-        "explains missing requirements",
+        "weighted anomaly score",
+        "explains missing signals",
     }
     assert any(item.kind == EvidenceKind.TEST for item in analysis.evidence)
 

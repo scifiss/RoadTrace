@@ -334,7 +334,7 @@ class JavaScriptTypeScriptAnalyzer:
                     owner,
                     source_file,
                     kind="browser_storage",
-                    value=f"{function_name}: {first_argument or 'stored application data'}",
+                    value=f"{function_name}: {first_argument or 'stored data'}",
                     line=line,
                 )
             tail = lowered.rsplit(".", 1)[-1]

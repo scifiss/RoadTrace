@@ -2,10 +2,10 @@
 
 **From code history to living roadmap.**
 
-RoadTrace turns a public GitHub repository into an auditable view of what the
-software does, how it is organized, and when its major capabilities appeared.
-Executable source structure is treated as the strongest evidence; tests, history,
-configuration, and documentation support the interpretation.
+RoadTrace reconstructs how software evolves from its implementation evidence. It
+analyzes source structure, relationships, behavior, and Git history to build an
+evidence-backed capability graph and reverse roadmap. Every inferred capability can
+be traced to the code and history that support it.
 
 V0.1 is a complete local vertical slice: paste a public GitHub URL, analyze it,
 inspect the versioned-lens reverse roadmap, explore bounded code/capability graphs,
@@ -83,13 +83,13 @@ both server access and the optional form input before starting RoadTrace:
 
 ```bash
 export ROADTRACE_DEV_LOCAL_REPOS=true
-export ROADTRACE_LOCAL_REPO_ROOTS=/home/rebecca/projects/geoworld-ss
+export ROADTRACE_LOCAL_REPO_ROOTS=/home/developer/projects
 export VITE_ENABLE_LOCAL_REPOS=true
 ./scripts/dev.sh
 ```
 
 Then enter the absolute Git top-level path, for example
-`/home/rebecca/projects/geoworld-ss/geoworld`. Multiple allowed roots use the platform path
+`/home/developer/projects/private-repository`. Multiple allowed roots use the platform path
 separator (`:` on Linux). RoadTrace resolves the requested path and roots, rejects
 symlink/path traversal outside them, requires the exact Git top-level directory, and
 never executes repository code. The feature is disabled and absent from the form by
@@ -139,14 +139,14 @@ npm run build
 ```
 
 The backend suite creates temporary repositories and never executes them. It includes
-a six-commit end-to-end history plus six unseen domains, an identifier-obfuscation
-pair, a structure-versus-lexicon ablation, misleading-documentation cases, a custom
-versioned lens set, and provenance/confidence invariants. This makes the reasoning
-regression reproducible without network access.
+a six-commit end-to-end history plus a heterogeneous nine-domain corpus, an
+identifier-obfuscation pair, a structure-versus-lexicon ablation,
+misleading-documentation cases, a custom versioned lens set, and
+provenance/confidence invariants. This makes the reasoning regression reproducible
+without network access.
 
-See [the reasoning architecture](docs/REASONING_ARCHITECTURE.md),
-[the pre-change audit](docs/REASONING_ARCHITECTURE_AUDIT.md), and
-[the JobTracker validation](docs/JOBTRACKER_VALIDATION.md).
+See [the reasoning architecture](docs/REASONING_ARCHITECTURE.md) and
+[the benchmark architecture](docs/BENCHMARKING.md).
 
 ## REST API
 

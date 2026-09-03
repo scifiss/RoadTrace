@@ -232,10 +232,10 @@ def test_development_local_input_uses_the_standard_analysis_pipeline(
 
 
 def test_product_semantic_fixture_clusters_workflows_and_controls_granularity(
-    product_semantic_repository: Path, settings
+    media_semantic_repository: Path, settings
 ) -> None:
     result = AnalysisService(settings).analyze_path(
-        product_semantic_repository,
+        media_semantic_repository,
         GitHubRepository(
             owner="roadtrace-fixtures",
             name="compound-workflow",
@@ -262,7 +262,7 @@ def test_product_semantic_fixture_clusters_workflows_and_controls_granularity(
     assert management and search and persistence and scoring
     assert any(item.parent_id == management[0].id for item in [*search, *persistence])
     assert len([item for item in result.capabilities if item.name == management[0].name]) == 1
-    assert "Payroll Management" not in by_name
+    assert "Biometric Identity Verification" not in by_name
     assert not {
         "API Surface",
         "Json Engine",

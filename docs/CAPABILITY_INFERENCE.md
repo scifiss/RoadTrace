@@ -9,8 +9,8 @@ because this implementation exists?**
 
 The original `CapabilityInferer` applied a small set of filters directly to a flat
 entity inventory. UI components became `User Interface`, endpoints became `API
-Surface`, and an unmatched frequent identifier could become an `Engine`. In
-JobTracker, JSON-related symbols won that fallback and produced `Json Engine`.
+Surface`, and an unmatched frequent serialization identifier could become an
+`Engine`, producing labels such as `Json Engine`.
 
 The failure was architectural: no normalized observation layer, no relationship-backed
 mechanism cluster, and no behavior representation stood between code entities and

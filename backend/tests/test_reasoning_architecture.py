@@ -12,7 +12,7 @@ from app.ingestion.repository import GitHubRepository
 from app.service import AnalysisService
 from app.taxonomy import load_lens_set
 
-DOMAIN_FIXTURES = {
+BENCHMARK_FIXTURES = {
     "crud_admin": (
         "customer",
         """from pydantic import BaseModel
@@ -99,6 +99,54 @@ def export_sensor_parquet(uploaded_file):
     return parquet_writer.write(aggregate_daily_sensor_metrics(rows))
 """,
     ),
+    "backend_service": (
+        "session|access|audit",
+        """from fastapi import FastAPI
+app = FastAPI()
+def validate_access_token(token):
+    if not token: raise ValueError('access token required')
+    return token
+def authorize_session(token, permissions):
+    return validate_access_token(token) in permissions
+def persist_audit_record(session_id, allowed):
+    audit_database.write({'session': session_id, 'allowed': allowed})
+@app.post('/sessions/verify')
+def verify_session(request):
+    allowed = authorize_session(request.token, request.permissions)
+    persist_audit_record(request.session_id, allowed)
+    return {'allowed': allowed}
+""",
+    ),
+    "library_framework": (
+        "extension|renderer|middleware",
+        """class ExtensionRegistry:
+    def register_renderer(self, format_name, renderer):
+        self.renderers[format_name] = renderer
+    def resolve_renderer(self, format_name):
+        return self.renderers[format_name]
+def compose_middleware(handlers):
+    def pipeline(payload):
+        for handler in handlers: payload = handler(payload)
+        return payload
+    return pipeline
+def execute_extension(registry, format_name, payload):
+    renderer = registry.resolve_renderer(format_name)
+    return compose_middleware([renderer])(payload)
+""",
+    ),
+    "unfamiliar_domain": (
+        "orbital|trajectory|ephemeris",
+        """def calculate_orbital_transfer(position, velocity, target_orbit):
+    return orbital_solver.solve(position, velocity, target_orbit)
+def integrate_trajectory(initial_state, maneuver, duration):
+    return trajectory_integrator.propagate(initial_state, maneuver, duration)
+def simulate_spacecraft_transfer(initial_state, target_orbit):
+    maneuver = calculate_orbital_transfer(*initial_state, target_orbit)
+    return integrate_trajectory(initial_state, maneuver, 86400)
+def export_ephemeris(trajectory):
+    return ephemeris_writer.write(trajectory)
+""",
+    ),
 }
 
 
@@ -147,7 +195,7 @@ def _analyze(repository: Path, settings):
 
 @pytest.mark.parametrize(
     ("domain", "expected_term", "source"),
-    [(domain, values[0], values[1]) for domain, values in DOMAIN_FIXTURES.items()],
+    [(domain, values[0], values[1]) for domain, values in BENCHMARK_FIXTURES.items()],
 )
 def test_open_world_inference_generalizes_across_unseen_domains(
     tmp_path: Path,
@@ -174,6 +222,33 @@ def test_open_world_inference_generalizes_across_unseen_domains(
     assert result.behaviors and result.observations
     assert any(item.mechanism_types for item in result.behaviors)
     assert all(item.evidence_ids and item.observation_ids for item in result.capabilities)
+    assert len(result.capabilities) < len(result.entities)
+    assert len({item.name.casefold() for item in result.capabilities}) == len(result.capabilities)
+    active_lens_ids = {item.id for item in result.lens_set.lenses if item.status == "ACTIVE"}
+    assert all(item.primary_lens in active_lens_ids for item in result.capabilities)
+    capability_ids = {item.id for item in result.capabilities}
+    assert all(
+        item.parent_id is None or item.parent_id in capability_ids for item in result.capabilities
+    )
+    capability_by_id = {item.id: item for item in result.capabilities}
+    for capability in result.capabilities:
+        seen: set[str] = set()
+        current = capability
+        while current.parent_id is not None:
+            assert current.id not in seen
+            seen.add(current.id)
+            current = capability_by_id[current.parent_id]
+    assert all(
+        item.first_seen is None or item.last_changed is None or item.first_seen <= item.last_changed
+        for item in result.capabilities
+    )
+    states_by_capability: dict[str, list] = {}
+    for state in result.capability_states:
+        states_by_capability.setdefault(state.capability_id, []).append(state)
+    assert all(
+        [item.timestamp for item in states] == sorted(item.timestamp for item in states)
+        for states in states_by_capability.values()
+    )
     assert not {
         "json engine",
         "api surface",
@@ -236,7 +311,7 @@ export function Panel() {
 def test_structure_ablation_lowers_behavior_confidence(tmp_path: Path, settings) -> None:
     repository = _repository(
         tmp_path,
-        {"src/workflow.py": DOMAIN_FIXTURES["event_automation"][1]},
+        {"src/workflow.py": BENCHMARK_FIXTURES["event_automation"][1]},
     )
     result = _analyze(repository, settings)
     without_relationships = build_behavior_summaries(
@@ -314,7 +389,7 @@ def test_lens_sets_are_versioned_replaceable_and_deprecatable(tmp_path: Path, se
 
     repository = _repository(
         tmp_path / "custom",
-        {"src/customers.py": DOMAIN_FIXTURES["crud_admin"][1]},
+        {"src/customers.py": BENCHMARK_FIXTURES["crud_admin"][1]},
     )
     result = _analyze(repository, replace(settings, lens_config_path=config))
     assert {item.category for item in result.categories} == {"Customer Value"}
@@ -322,9 +397,9 @@ def test_lens_sets_are_versioned_replaceable_and_deprecatable(tmp_path: Path, se
 
 
 def test_provenance_chain_and_confidence_dimensions_are_complete(
-    product_semantic_repository: Path, settings
+    media_semantic_repository: Path, settings
 ) -> None:
-    result = _analyze(product_semantic_repository, settings)
+    result = _analyze(media_semantic_repository, settings)
     evidence_ids = {item.id for item in result.evidence}
     observation_ids = {item.id for item in result.observations}
     behavior_ids = {item.id for item in result.behaviors}

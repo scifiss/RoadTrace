@@ -206,15 +206,15 @@ Developer-only local analysis uses the same file, Git, observation, mechanism, a
 capability pipeline as a GitHub clone. Enable it explicitly:
 
 ```bash
-cd /home/rebecca/projects/RoadTrace
+cd /path/to/RoadTrace
 export ROADTRACE_DEV_LOCAL_REPOS=true
-export ROADTRACE_LOCAL_REPO_ROOTS=/home/rebecca/projects
+export ROADTRACE_LOCAL_REPO_ROOTS=/home/developer/projects
 export VITE_ENABLE_LOCAL_REPOS=true
 ./scripts/dev.sh
 ```
 
 Then enter the exact absolute Git top-level path, for example
-`/home/rebecca/projects/geoworld-ss/geoworld`. Multiple roots are colon-separated on
+`/home/developer/projects/private-repository`. Multiple roots are colon-separated on
 Linux. The server resolves symlinks, checks canonical containment beneath an allowed
 root, requires the requested path to equal Git's top-level worktree, and rejects local
 input unless the gate and roots are configured. Production defaults remain disabled.
@@ -225,11 +225,13 @@ executes repository code.
 
 ## 10. Evaluation strategy and current limits
 
-The regression suite checks a multi-commit end-to-end repository, six unseen domains,
-identifier obfuscation, graph-relationship ablation, misleading documentation in both
-directions, configurable/deprecated lenses, LLM evidence bounds, local-path security,
-and complete provenance/confidence references. JobTracker is an important regression
-case, not a source of vocabulary.
+Evaluation uses a heterogeneous corpus spanning interactive, administrative, service,
+scientific, ML, automation, CLI, data-processing, library/framework, and unfamiliar
+domain software. It checks evidence grounding, structural cohesion, behavior
+separation, abstraction level, duplicate control, unsupported-capability control,
+hierarchy, temporal consistency, label quality, and identifier robustness. Exact
+capability wording is not the contract. The complete benchmark policy is in
+[BENCHMARKING.md](BENCHMARKING.md).
 
 Current limits are explicit:
 
